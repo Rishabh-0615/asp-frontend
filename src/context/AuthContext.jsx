@@ -1,7 +1,25 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+
+const apiError = (err, fallback) => {
+  if (!err?.response) {
+    return "Unable to reach server. Please ensure backend is running.";
+  }
+  return err.response?.data?.message || fallback;
+};
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransient = (err) => {
+  if (!err?.response) {
+    return true;
+  }
+
+  const status = err.response.status;
+  return status >= 500;
+};
 
 const AuthContext = createContext(null);
 
@@ -22,7 +40,7 @@ export const AuthProvider = ({ children }) => {
       );
       return res.data;
     } catch (err) {
-      const msg = err.response?.data?.message || "Registration failed.";
+      const msg = apiError(err, "Registration failed.");
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -34,15 +52,29 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.post(
-        `${BASE_URL}/faculty/login`,
-        { email, password },
-        { withCredentials: true }
-      );
+      let res;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          res = await axios.post(
+            `${BASE_URL}/faculty/login`,
+            { email, password },
+            { withCredentials: true }
+          );
+          break;
+        } catch (err) {
+          if (isTransient(err) && attempt < 3) {
+            await delay(250 * attempt);
+            continue;
+          }
+
+          throw err;
+        }
+      }
+
       await fetchProfile();
       return res.data;
     } catch (err) {
-      const msg = err.response?.data?.message || "Login failed.";
+      const msg = apiError(err, "Login failed.");
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -67,14 +99,36 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = async () => {
     try {
-      const res = await axios.get(
-        `${BASE_URL}/faculty/me`,
-        { withCredentials: true }
-      );
+      let res;
+
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          res = await axios.get(
+            `${BASE_URL}/faculty/me`,
+            { withCredentials: true }
+          );
+          break;
+        } catch (err) {
+          if (isTransient(err) && attempt < 2) {
+            await delay(250);
+            continue;
+          }
+
+          // Keep existing session on temporary network failure.
+          if (!err?.response) {
+            return;
+          }
+
+          // Clear session only on definitive auth failure.
+          if (err.response.status === 401 || err.response.status === 403) {
+            setFaculty(null);
+          }
+          return;
+        }
+      }
+
       setFaculty(res.data.success ? res.data.data : null);
-    } catch (_) {
-      setFaculty(null);
-    }
+    } catch (_) {}
   };
 
   // On mount: check session, then mark initializing = false

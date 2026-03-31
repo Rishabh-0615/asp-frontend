@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { Layers3, FileText, Clock, UserCircle2, GraduationCap, Mail, BookOpen } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Layers3, FileText, Clock, UserCircle2, GraduationCap, Mail, BookOpen, Menu, RefreshCw } from "lucide-react";
 import StudentSidebar from "../components/layout/StudentSidebar";
 import { useStudentAuth } from "../context/StudentAuthContext";
+import { useAssignment } from "../context/AssignmentContext";
+import StudentAssignments from "./StudentAssignments";
+import BatchDetails from "./admin/BatchDetails";
 
 const yearLabels = {
   2: "Second Year",
@@ -23,7 +26,7 @@ const StatCard = ({ icon: Icon, label, value, highlight }) => (
   </div>
 );
 
-const StudentOverview = ({ student, myBatches, onNavigate }) => (
+const StudentOverview = ({ student, myBatches, onNavigate, onOpenBatchDetails, assignmentCount, pendingCount }) => (
   <div>
     <div className="mb-10">
       <h2 className="text-2xl font-semibold text-[#F3F4F6]">Welcome back, {student?.name?.split(" ")[0] || "Student"}.</h2>
@@ -32,8 +35,8 @@ const StudentOverview = ({ student, myBatches, onNavigate }) => (
 
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
       <StatCard icon={Layers3} label="My batches" value={myBatches.length} highlight={myBatches.length > 0} />
-      <StatCard icon={FileText} label="Assignments" value="0" />
-      <StatCard icon={Clock} label="Pending" value="0" />
+      <StatCard icon={FileText} label="Assignments" value={assignmentCount} highlight={assignmentCount > 0} />
+      <StatCard icon={Clock} label="Pending" value={pendingCount} highlight={pendingCount > 0} />
       <StatCard icon={GraduationCap} label="Year" value={yearLabels[student?.year] || student?.year || "-"} />
     </div>
 
@@ -59,7 +62,13 @@ const StudentOverview = ({ student, myBatches, onNavigate }) => (
                   <p className="text-[#F3F4F6] font-medium">{batch.subjectName}</p>
                   <p className="text-sm text-gray-500 mt-1">{batch.yearLabel} • {batch.division} • {batch.baseBatch}</p>
                 </div>
-                <span className="px-3 py-1 rounded-full text-xs border border-[#00C2FF]/30 text-[#00C2FF] bg-[#00C2FF]/10">Active</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenBatchDetails?.(batch.batchId)}
+                  className="px-3 py-1.5 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs font-medium hover:bg-[#00C2FF]/20"
+                >
+                  Batch Details
+                </button>
               </div>
             ))}
           </div>
@@ -91,7 +100,7 @@ const StudentOverview = ({ student, myBatches, onNavigate }) => (
   </div>
 );
 
-const StudentBatchesView = ({ myBatches, loading, error }) => (
+const StudentBatchesView = ({ myBatches, loading, error, onRefresh, onOpenBatchDetails }) => (
   <div>
     <div className="mb-8">
       <h2 className="text-xl font-semibold text-[#F3F4F6]">My Batches</h2>
@@ -106,30 +115,70 @@ const StudentBatchesView = ({ myBatches, loading, error }) => (
         <p className="text-gray-500 text-sm mt-2">Once faculty creates a subject batch and maps you, it will appear here.</p>
       </div>
     ) : (
-      <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-700 bg-[#0F1114]">
-              <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Year</th>
-              <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Division</th>
-              <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Base Batch</th>
-              <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Subject</th>
-              <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {myBatches.map((batch) => (
-              <tr key={batch.batchId} className="border-t border-gray-700 hover:bg-[#2A2F36] transition-colors">
-                <td className="px-6 py-4 text-gray-300">{batch.yearLabel || `Year ${batch.year}`}</td>
-                <td className="px-6 py-4 text-gray-300">{batch.division}</td>
-                <td className="px-6 py-4 text-gray-300">{batch.baseBatch}</td>
-                <td className="px-6 py-4 text-[#F3F4F6] font-medium">{batch.subjectName}</td>
-                <td className="px-6 py-4 text-gray-500">{batch.createdAt ? new Date(batch.createdAt).toLocaleString() : "-"}</td>
+      <>
+        <div className="hidden md:block bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700 bg-[#0F1114]">
+                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Year</th>
+                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Division</th>
+                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Base Batch</th>
+                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Subject</th>
+                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Created</th>
+                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {myBatches.map((batch) => (
+                <tr key={batch.batchId} className="border-t border-gray-700 hover:bg-[#2A2F36] transition-colors">
+                  <td className="px-6 py-4 text-gray-300">{batch.yearLabel || `Year ${batch.year}`}</td>
+                  <td className="px-6 py-4 text-gray-300">{batch.division}</td>
+                  <td className="px-6 py-4 text-gray-300">{batch.baseBatch}</td>
+                  <td className="px-6 py-4 text-[#F3F4F6] font-medium">{batch.subjectName}</td>
+                  <td className="px-6 py-4 text-gray-500">{batch.createdAt ? new Date(batch.createdAt).toLocaleString() : "-"}</td>
+                  <td className="px-6 py-4">
+                    <button
+                      type="button"
+                      onClick={() => onOpenBatchDetails?.(batch.batchId)}
+                      className="px-3 py-1.5 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs font-medium hover:bg-[#00C2FF]/20"
+                    >
+                      Batch Details
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="md:hidden space-y-3 pb-20">
+          {myBatches.map((batch) => (
+            <div key={batch.batchId} className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-4">
+              <p className="text-[#F3F4F6] font-medium text-sm">{batch.subjectName}</p>
+              <p className="text-xs text-gray-400 mt-1">{batch.yearLabel || `Year ${batch.year}`} / {batch.division} / {batch.baseBatch}</p>
+              <p className="text-xs text-gray-500 mt-2">Created: {batch.createdAt ? new Date(batch.createdAt).toLocaleDateString() : "-"}</p>
+              <button
+                type="button"
+                onClick={() => onOpenBatchDetails?.(batch.batchId)}
+                className="mt-3 w-full min-h-10 px-3 py-2 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs font-medium"
+              >
+                Batch Details
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-gray-700 bg-[#0F1114]/95 backdrop-blur px-4 py-3">
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="w-full min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-700 text-gray-300 text-sm"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            Refresh batches
+          </button>
+        </div>
+      </>
     )}
   </div>
 );
@@ -168,27 +217,70 @@ const StudentProfileView = ({ student }) => {
   );
 };
 
-const StudentAssignmentsView = () => (
-  <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-14 text-center">
-    <FileText size={42} className="mx-auto mb-4 text-gray-600" />
-    <p className="text-[#F3F4F6] font-medium">Assignments will appear here.</p>
-    <p className="text-sm text-gray-500 mt-2">This area is ready for assignment integration once faculty-side assignment mapping is connected to student batches.</p>
-  </div>
-);
-
 const StudentDashboard = () => {
   const { student, myBatches, loading, fetchMyBatches } = useStudentAuth();
+  const { getStudentAssignments } = useAssignment();
   const [activePage, setActivePage] = useState("overview");
+  const [selectedBatchId, setSelectedBatchId] = useState(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [batchError, setBatchError] = useState(null);
+  const [assignmentCount, setAssignmentCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const refreshOverviewData = useCallback(async () => {
+    if (!student) {
+      return;
+    }
+
+    try {
+      await fetchMyBatches();
+      setBatchError(null);
+    } catch (err) {
+      setBatchError(err.message);
+    }
+
+    try {
+      const rows = await getStudentAssignments();
+      setAssignmentCount(rows.length);
+
+      const now = new Date();
+      const pending = rows.filter((row) => {
+        const deadline = row?.deadline ? new Date(row.deadline) : null;
+        const isOpen = row?.isOpen !== false;
+        const closed = row?.closed === true;
+        return isOpen && !closed && (!deadline || deadline >= now);
+      }).length;
+
+      setPendingCount(pending);
+    } catch (_) {
+      // Keep previous values on transient failure; avoid flickering to 0.
+    }
+  }, [student, fetchMyBatches, getStudentAssignments]);
 
   useEffect(() => {
-    fetchMyBatches().catch((err) => setBatchError(err.message));
-  }, []);
+    if (!student) {
+      return;
+    }
+
+    if (activePage === "overview") {
+      refreshOverviewData();
+    }
+  }, [student, activePage, refreshOverviewData]);
+
+  const openBatchDetails = (batchId) => {
+    if (!batchId) {
+      return;
+    }
+
+    setSelectedBatchId(batchId);
+    setActivePage("batch-details");
+  };
 
   const pageTitles = useMemo(
     () => ({
       overview: "Student Dashboard",
       batches: "My Batches",
+      "batch-details": "Batch Details",
       assignments: "Assignments",
       profile: "My Profile",
     }),
@@ -206,13 +298,24 @@ const StudentDashboard = () => {
   const renderContent = () => {
     switch (activePage) {
       case "overview":
-        return <StudentOverview student={student} myBatches={myBatches} onNavigate={setActivePage} />;
+        return (
+          <StudentOverview
+            student={student}
+            myBatches={myBatches}
+            onNavigate={setActivePage}
+            onOpenBatchDetails={openBatchDetails}
+            assignmentCount={assignmentCount}
+            pendingCount={pendingCount}
+          />
+        );
       case "batches":
-        return <StudentBatchesView myBatches={myBatches} loading={loading} error={batchError} />;
+        return <StudentBatchesView myBatches={myBatches} loading={loading} error={batchError} onRefresh={refreshOverviewData} onOpenBatchDetails={openBatchDetails} />;
+      case "batch-details":
+        return <BatchDetails batchId={selectedBatchId} onBack={() => setActivePage("batches")} isStudentView />;
       case "profile":
         return <StudentProfileView student={student} />;
       case "assignments":
-        return <StudentAssignmentsView />;
+        return <StudentAssignments />;
       default:
         return null;
     }
@@ -220,17 +323,32 @@ const StudentDashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-[#0F1114]">
-      <StudentSidebar activePage={activePage} onNavigate={setActivePage} />
+      <StudentSidebar
+        activePage={activePage}
+        onNavigate={setActivePage}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
 
       <div className="flex-1 flex flex-col">
-        <header className="h-16 px-8 flex items-center justify-between bg-[#1C1F23] border-b border-gray-800">
+        <header className="h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between bg-[#1C1F23] border-b border-gray-800">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="inline-flex lg:hidden items-center justify-center w-9 h-9 rounded-lg border border-gray-700 text-gray-300 hover:text-[#F3F4F6] hover:bg-[#2A2F36]"
+              aria-label="Open menu"
+            >
+              <Menu size={16} />
+            </button>
           <h1 className="text-sm font-semibold text-[#F3F4F6]">{pageTitles[activePage] || "Student Dashboard"}</h1>
+          </div>
           <div className="w-9 h-9 rounded-full bg-[#00C2FF]/20 border border-[#00C2FF]/30 flex items-center justify-center text-[#00C2FF] text-sm font-semibold">
             {student?.name?.[0] || "S"}
           </div>
         </header>
 
-        <main className="flex-1 p-8">{renderContent()}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">{renderContent()}</main>
       </div>
     </div>
   );

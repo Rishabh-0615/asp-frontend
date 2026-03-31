@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext.jsx'
 import { AdminProvider } from './context/AdminContext.jsx'
 import { StudentAuthProvider } from './context/StudentAuthContext.jsx'
 import { BatchProvider } from './context/BatchContext.jsx'
+import { AssignmentProvider } from './context/AssignmentContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -14,9 +15,11 @@ createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <AdminProvider>
           <BatchProvider>
-            <StudentAuthProvider>
-              <App />
-            </StudentAuthProvider>
+            <AssignmentProvider>
+              <StudentAuthProvider>
+                <App />
+              </StudentAuthProvider>
+            </AssignmentProvider>
           </BatchProvider>
         </AdminProvider>
       </AuthProvider>

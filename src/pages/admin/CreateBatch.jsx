@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   baseBatch: "",
   semester: "",
   subjectName: "",
+  labManualFile: null,
 };
 
 const CreateBatch = () => {
@@ -68,6 +69,11 @@ const CreateBatch = () => {
 
   const onFieldChange = (name, value) => {
     setMessage(null);
+    if (name === "labManualFile") {
+      setForm((prev) => ({ ...prev, labManualFile: value }));
+      return;
+    }
+
     if (name === "year") {
       setForm((prev) => ({
         ...prev,
@@ -133,9 +139,9 @@ const CreateBatch = () => {
     }
   };
 
-  const inputClass =
-    "w-full px-4 py-2.5 rounded-xl text-sm border border-gray-700 bg-gray-800 text-[#F3F4F6] focus:outline-none focus:ring-2 focus:ring-[#00C2FF]/30 focus:border-[#00C2FF]";
+  const inputClass = "w-full ui-control";
   const disabledClass = `${inputClass} opacity-50 cursor-not-allowed`;
+  const labelClass = "block text-sm text-[#F3F4F6] mb-2";
   const yearLabel = (year) => options?.yearLabels?.[String(year)] || options?.yearLabels?.[Number(year)] || `Year ${year}`;
 
   return (
@@ -147,9 +153,9 @@ const CreateBatch = () => {
         </p>
       </div>
 
-      <form onSubmit={submit} className="bg-[#1C1F23] border border-gray-700 rounded-xl p-8 space-y-6">
+      <form onSubmit={submit} className="ui-surface p-8 space-y-6">
         <div>
-          <label className="block text-sm text-[#F3F4F6] mb-2">Department</label>
+          <label className={labelClass}>Department</label>
           <select
             value={form.department}
             onChange={(e) => onFieldChange("department", e.target.value)}
@@ -163,7 +169,7 @@ const CreateBatch = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm text-[#F3F4F6] mb-2">Year</label>
+            <label className={labelClass}>Year</label>
             <select
               value={form.year}
               onChange={(e) => onFieldChange("year", e.target.value)}
@@ -178,7 +184,10 @@ const CreateBatch = () => {
           </div>
 
           <div>
-            <label className="block text-sm text-[#F3F4F6] mb-2">Division</label>
+            <label className={labelClass}>
+              Division
+              {!form.year && <span className="text-gray-600 font-normal ml-1">(select year first)</span>}
+            </label>
             <select
               value={form.division}
               onChange={(e) => onFieldChange("division", e.target.value)}
@@ -196,7 +205,10 @@ const CreateBatch = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm text-[#F3F4F6] mb-2">Base Batch</label>
+            <label className={labelClass}>
+              Base Batch
+              {!form.division && <span className="text-gray-600 font-normal ml-1">(select division first)</span>}
+            </label>
             <select
               value={form.baseBatch}
               onChange={(e) => onFieldChange("baseBatch", e.target.value)}
@@ -212,7 +224,10 @@ const CreateBatch = () => {
           </div>
 
           <div>
-            <label className="block text-sm text-[#F3F4F6] mb-2">Semester</label>
+            <label className={labelClass}>
+              Semester
+              {String(form.year) !== "3" && <span className="text-gray-600 font-normal ml-1">(available for 3rd year)</span>}
+            </label>
             <select
               value={form.semester}
               onChange={(e) => onFieldChange("semester", e.target.value)}
@@ -229,7 +244,7 @@ const CreateBatch = () => {
         </div>
 
         <div>
-          <label className="block text-sm text-[#F3F4F6] mb-2">Subject</label>
+          <label className={labelClass}>Subject</label>
           <select
             value={form.subjectName}
             onChange={(e) => onFieldChange("subjectName", e.target.value)}
@@ -244,6 +259,21 @@ const CreateBatch = () => {
           </select>
         </div>
 
+        <div>
+          <label className={labelClass}>Lab Manual (Optional)</label>
+          <input
+            type="file"
+            onChange={(e) => onFieldChange("labManualFile", e.target.files?.[0] || null)}
+            className={inputClass}
+          />
+          <p className="text-xs text-gray-500 mt-2">
+            Optional: you can upload or change the lab manual later from Batch Details.
+          </p>
+          {form.labManualFile && (
+            <p className="text-xs text-[#9fdaed] mt-1">Selected: {form.labManualFile.name}</p>
+          )}
+        </div>
+
         <div className="rounded-xl border border-[#00C2FF]/25 bg-[#00C2FF]/5 p-4 text-sm text-gray-300 flex items-start gap-3">
           <Layers3 size={16} className="text-[#00C2FF] mt-0.5" />
           <p>
@@ -254,7 +284,7 @@ const CreateBatch = () => {
         <button
           type="submit"
           disabled={loading || submitting}
-          className="w-full px-6 py-3 rounded-xl font-medium text-sm bg-[#00C2FF] text-[#0E0F11] hover:bg-[#0099CC] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full ui-btn ui-btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? "Creating Batch..." : "Create Batch"}
         </button>

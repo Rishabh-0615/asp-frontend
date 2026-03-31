@@ -20,7 +20,7 @@ const AppLoader = () => (
 
 const App = () => {
   const { isLoggedIn: isFacultyLoggedIn, initializing } = useAuth();
-  const { isLoggedIn: isStudentLoggedIn } = useStudentAuth();
+  const { isLoggedIn: isStudentLoggedIn, loading: studentLoading } = useStudentAuth();
   const [page, setPage] = useState("auth");
 
   useEffect(() => {
@@ -36,31 +36,35 @@ const App = () => {
     }
   }, []);
 
-  // Still checking session cookie → show loader, not auth page
-  if (initializing) {
+  const isStudentRoute = page === "student-login" || page === "student-dashboard";
+
+  // Wait for auth contexts before deciding which screen to render.
+  if (initializing || (isStudentRoute && studentLoading)) {
     return <AppLoader />;
+  }
+
+  // Student routes must stay in student flow even if faculty session exists.
+  if (isStudentRoute) {
+    if (isStudentLoggedIn()) {
+      if (window.location.pathname !== "/student/dashboard") {
+        window.history.replaceState({}, "", "/student/dashboard");
+      }
+      return <StudentDashboard />;
+    }
+
+    return (
+      <StudentLogin
+        onLoginSuccess={() => {
+          setPage("student-dashboard");
+          window.history.replaceState({}, "", "/student/dashboard");
+        }}
+      />
+    );
   }
 
   // Faculty logged in → dashboard
   if (isFacultyLoggedIn()) {
     return <DashboardPage />;
-  }
-
-  // Student logged in → student dashboard
-  if (isStudentLoggedIn() && page === "student-dashboard") {
-    return <StudentDashboard />;
-  }
-
-  // Student login / dashboard
-  if (page === "student-login" || page === "student-dashboard") {
-    return (
-      <StudentLogin
-        onLoginSuccess={() => {
-          setPage("student-dashboard");
-          window.history.pushState({}, "", "/student/dashboard");
-        }}
-      />
-    );
   }
 
   // Faculty auth

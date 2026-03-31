@@ -1,9 +1,33 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
 const StudentAuthContext = createContext(null);
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const extractErrorMessage = (err, fallback) => {
+  if (!err?.response) {
+    return "Unable to reach server. Please ensure backend is running.";
+  }
+
+  const data = err?.response?.data;
+
+  if (typeof data === "string" && data.trim()) {
+    return data;
+  }
+
+  if (data?.message) {
+    return data.message;
+  }
+
+  const status = err?.response?.status;
+  if (status === 403) {
+    return "Access denied. Please clear cookies once and try student login again.";
+  }
+
+  return err?.message || fallback;
+};
 
 export const StudentAuthProvider = ({ children }) => {
   const [student, setStudent] = useState(null);
@@ -11,11 +35,7 @@ export const StudentAuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const response = await axios.get(`${BASE_URL}/student/me`, {
         withCredentials: true,
@@ -37,9 +57,9 @@ export const StudentAuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchMyBatches = async () => {
+  const fetchMyBatches = useCallback(async () => {
     try {
       const response = await axios.get(`${BASE_URL}/student/batches`, {
         withCredentials: true,
@@ -48,19 +68,41 @@ export const StudentAuthProvider = ({ children }) => {
       return response.data?.data || [];
     } catch (err) {
       setMyBatches([]);
-      const errorMessage = err.response?.data?.message || "Failed to fetch student batches";
+      const errorMessage = extractErrorMessage(err, "Failed to fetch student batches");
       throw new Error(errorMessage);
     }
-  };
+  }, []);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     setError(null);
     try {
-      const response = await axios.post(
-        `${BASE_URL}/student/login`,
-        { email, password },
-        { withCredentials: true }
-      );
+      let response;
+
+      for (let attempt = 1; attempt <= 4; attempt += 1) {
+        try {
+          response = await axios.post(
+            `${BASE_URL}/student/login`,
+            { email, password },
+            { withCredentials: true }
+          );
+          break;
+        } catch (err) {
+          const status = err?.response?.status;
+          const msg = err?.response?.data?.message;
+          const isTransient = status >= 500 || msg === "An unexpected error occurred";
+
+          if (isTransient && attempt < 4) {
+            await delay(300 * attempt);
+            continue;
+          }
+
+          throw err;
+        }
+      }
+
+      if (!response) {
+        throw new Error("Login failed");
+      }
 
       if (response.data.success && response.data?.data?.activationRequired) {
         return response.data;
@@ -69,18 +111,17 @@ export const StudentAuthProvider = ({ children }) => {
       if (response.data.success) {
         await fetchProfile();
         return response.data;
-      } else {
-        throw new Error(response.data.message || "Login failed");
       }
+
+      throw new Error(response.data.message || "Login failed");
     } catch (err) {
-      const errorMessage =
-        err.response?.data?.message || err.message || "Login failed";
+      const errorMessage = extractErrorMessage(err, "Login failed");
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  };
+  }, [fetchProfile]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await axios.post(`${BASE_URL}/student/logout`, {}, { withCredentials: true });
       setStudent(null);
@@ -89,13 +130,11 @@ export const StudentAuthProvider = ({ children }) => {
     } catch (err) {
       console.error("Logout error:", err);
     }
-  };
+  }, []);
 
-  const isLoggedIn = () => {
-    return student !== null;
-  };
+  const isLoggedIn = useCallback(() => student !== null, [student]);
 
-  const activateAccount = async (email, tempPassword, newPassword) => {
+  const activateAccount = useCallback(async (email, tempPassword, newPassword) => {
     setError(null);
     try {
       const response = await axios.post(
@@ -111,27 +150,45 @@ export const StudentAuthProvider = ({ children }) => {
 
       throw new Error(response.data.message || "Activation failed");
     } catch (err) {
-      const errorMessage = err.response?.data?.message || err.message || "Activation failed";
+      const errorMessage = extractErrorMessage(err, "Activation failed");
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  };
+  }, [fetchProfile]);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  const value = useMemo(
+    () => ({
+      student,
+      loading,
+      error,
+      myBatches,
+      login,
+      logout,
+      activateAccount,
+      fetchProfile,
+      fetchMyBatches,
+      isLoggedIn,
+    }),
+    [
+      student,
+      loading,
+      error,
+      myBatches,
+      login,
+      logout,
+      activateAccount,
+      fetchProfile,
+      fetchMyBatches,
+      isLoggedIn,
+    ]
+  );
 
   return (
-    <StudentAuthContext.Provider
-      value={{
-        student,
-        loading,
-        error,
-        myBatches,
-        login,
-        logout,
-        activateAccount,
-        fetchProfile,
-        fetchMyBatches,
-        isLoggedIn,
-      }}
-    >
+    <StudentAuthContext.Provider value={value}>
       {children}
     </StudentAuthContext.Provider>
   );

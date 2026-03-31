@@ -120,13 +120,7 @@ const CreateStudent = () => {
     }
   };
 
-  const inputClass = `
-    w-full px-4 py-2.5 rounded-xl text-sm
-    border border-gray-700 bg-gray-800
-    text-[#F3F4F6] placeholder-gray-500
-    focus:outline-none focus:ring-2 focus:ring-[#00C2FF]/30 focus:border-[#00C2FF]
-    transition-all
-  `;
+  const inputClass = "w-full ui-control";
 
   const disabledSelectClass = `${inputClass} opacity-40 cursor-not-allowed`;
   const labelClass = "block text-sm font-medium text-[#F3F4F6] mb-2";
@@ -138,7 +132,7 @@ const CreateStudent = () => {
         <p className="text-sm text-gray-500">Add a student account with all required information</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-[#1C1F23] border border-gray-700 rounded-xl p-8 space-y-6">
+      <form onSubmit={handleSubmit} className="ui-surface p-8 space-y-6">
 
         {/* Roll No */}
         <div>
@@ -235,7 +229,7 @@ const CreateStudent = () => {
               type="button"
               onClick={handleGeneratePassword}
               disabled={loading}
-              className="px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm border border-gray-700 text-gray-400 hover:bg-[#2A2F36] hover:text-[#F3F4F6] disabled:opacity-50 transition-all"
+              className="ui-btn ui-btn-secondary px-4 disabled:opacity-50"
             >
               <Key size={15} />
               Generate
@@ -248,7 +242,7 @@ const CreateStudent = () => {
         <button
           type="submit"
           disabled={formLoading || loading}
-          className="w-full px-6 py-3 rounded-xl font-medium flex items-center justify-center gap-2 text-sm bg-[#00C2FF] text-[#0E0F11] hover:bg-[#0099CC] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="w-full ui-btn ui-btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <UserPlus size={17} />
           {formLoading ? "Creating Student..." : "Create Student"}

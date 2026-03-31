@@ -1,7 +1,14 @@
 import { createContext, useContext, useState } from "react";
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+
+const apiError = (err, fallback) => {
+  if (!err?.response) {
+    return "Unable to reach server. Please ensure backend is running.";
+  }
+  return err.response?.data?.message || fallback;
+};
 
 const StudentActivationContext = createContext(null);
 
@@ -31,7 +38,7 @@ export const StudentActivationProvider = ({ children }) => {
 
       return res.data;
     } catch (err) {
-      const msg = err.response?.data?.message || "Activation initiation failed.";
+      const msg = apiError(err, "Activation initiation failed.");
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -57,7 +64,7 @@ export const StudentActivationProvider = ({ children }) => {
 
       return res.data;
     } catch (err) {
-      const msg = err.response?.data?.message || "Invalid temporary password.";
+      const msg = apiError(err, "Invalid temporary password.");
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -84,7 +91,7 @@ export const StudentActivationProvider = ({ children }) => {
 
       return res.data;
     } catch (err) {
-      const msg = err.response?.data?.message || "Failed to set password.";
+      const msg = apiError(err, "Failed to set password.");
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -102,7 +109,7 @@ export const StudentActivationProvider = ({ children }) => {
       );
       return res.data; 
     } catch (err) {
-      const msg = err.response?.data?.message || "Failed to fetch status.";
+      const msg = apiError(err, "Failed to fetch status.");
       setError(msg);
       throw new Error(msg);
     } finally {

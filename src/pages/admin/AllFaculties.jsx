@@ -67,38 +67,67 @@ const AllFaculties = () => {
           <p className="text-[#F3F4F6] font-medium">No faculty members found.</p>
         </div>
       ) : (
-        <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700 bg-[#0F1114]">
-                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Email</th>
-                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Role</th>
-                <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {faculties.map((f) => (
-                <tr
-                  key={f.id}
-                  className="border-t border-gray-700 hover:bg-[#2A2F36] transition-colors"
-                >
-                  <td className="px-6 py-4 font-medium text-[#F3F4F6]">
-                    <span className="flex items-center gap-2">
-                      {f.name}
-                      {f.admin && <ShieldCheck size={14} className="text-[#F59E0B] shrink-0" />}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-gray-500">{f.email}</td>
-                  <td className="px-6 py-4 text-gray-500">{f.admin ? "Admin" : "Faculty"}</td>
-                  <td className="px-6 py-4">
-                    <StatusBadge status={f.status} />
-                  </td>
+        <>
+          <div className="hidden md:block bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700 bg-[#0F1114]">
+                  <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Name</th>
+                  <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Email</th>
+                  <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Role</th>
+                  <th className="text-left px-6 py-4 text-xs text-gray-500 uppercase tracking-wide">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {faculties.map((f) => (
+                  <tr
+                    key={f.id}
+                    className="border-t border-gray-700 hover:bg-[#2A2F36] transition-colors"
+                  >
+                    <td className="px-6 py-4 font-medium text-[#F3F4F6]">
+                      <span className="flex items-center gap-2">
+                        {f.name}
+                        {f.admin && <ShieldCheck size={14} className="text-[#F59E0B] shrink-0" />}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-gray-500">{f.email}</td>
+                    <td className="px-6 py-4 text-gray-500">{f.admin ? "Admin" : "Faculty"}</td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={f.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden space-y-3 pb-20">
+            {faculties.map((f) => (
+              <div key={f.id} className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[#F3F4F6] font-medium text-sm flex items-center gap-2">
+                    {f.name}
+                    {f.admin && <ShieldCheck size={13} className="text-[#F59E0B] shrink-0" />}
+                  </p>
+                  <StatusBadge status={f.status} />
+                </div>
+                <p className="text-xs text-gray-400 mt-2 break-all">{f.email}</p>
+                <p className="text-xs text-gray-500 mt-2">Role: {f.admin ? "Admin" : "Faculty"}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-gray-700 bg-[#0F1114]/95 backdrop-blur px-4 py-3">
+            <button
+              type="button"
+              onClick={load}
+              className="w-full min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-700 text-gray-300 text-sm"
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              Refresh faculties
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

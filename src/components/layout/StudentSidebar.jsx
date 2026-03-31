@@ -23,7 +23,7 @@ const navItems = [
   { section: "Account", items: [{ icon: UserCircle2, label: "Profile", key: "profile" }] },
 ];
 
-const StudentSidebar = ({ activePage, onNavigate }) => {
+const StudentSidebar = ({ activePage, onNavigate, mobileOpen = false, onMobileClose }) => {
   const [collapsed, setCollapsed] = useState(false);
   const { student, logout } = useStudentAuth();
 
@@ -33,7 +33,17 @@ const StudentSidebar = ({ activePage, onNavigate }) => {
   };
 
   return (
-    <aside className={`relative flex flex-col bg-[#1C1F23] border-r border-gray-800 transition-all duration-300 ease-in-out ${collapsed ? "w-16" : "w-60"} min-h-screen shrink-0`}>
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          onClick={onMobileClose}
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          aria-label="Close menu"
+        />
+      )}
+
+      <aside className={`fixed lg:relative z-40 lg:z-auto inset-y-0 left-0 flex flex-col bg-[#1C1F23] border-r border-gray-800 transition-all duration-300 ease-in-out ${collapsed ? "w-16" : "w-60"} min-h-screen shrink-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
       <button
         onClick={() => setCollapsed((value) => !value)}
         className="absolute -right-3 top-6 z-10 w-6 h-6 rounded-full bg-[#1C1F23] border border-gray-700 hover:border-[#00C2FF] flex items-center justify-center text-gray-400 hover:text-[#00C2FF] shadow-sm transition-all duration-200"
@@ -72,7 +82,10 @@ const StudentSidebar = ({ activePage, onNavigate }) => {
                 return (
                   <li key={key}>
                     <button
-                      onClick={() => onNavigate(key)}
+                      onClick={() => {
+                        onNavigate(key);
+                        onMobileClose?.();
+                      }}
                       title={collapsed ? label : undefined}
                       className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${isActive ? "bg-[#00C2FF] text-[#0E0F11]" : "text-gray-400 hover:border hover:border-[#00C2FF] hover:bg-transparent hover:text-[#F3F4F6]"} ${collapsed ? "justify-center" : ""}`}
                     >
@@ -89,14 +102,18 @@ const StudentSidebar = ({ activePage, onNavigate }) => {
 
       <div className="p-2 border-t border-gray-800">
         <button
-          onClick={handleLogout}
+          onClick={async () => {
+            onMobileClose?.();
+            await handleLogout();
+          }}
           className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 hover:border hover:border-[#F87171] hover:bg-transparent hover:text-[#F87171] transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
         >
           <LogOut size={16} className="shrink-0" />
           {!collapsed && <span>Logout</span>}
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 

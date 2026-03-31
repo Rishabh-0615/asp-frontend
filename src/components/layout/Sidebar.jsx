@@ -17,9 +17,16 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
-// ─── TEMPORARY: replace with faculty?.isAdmin or faculty?.is_admin
-//     once you confirm what field your /faculty/me API actually returns.
-const TEMP_ADMIN_EMAIL = "apwarade91@gmail.com";
+const hasAdminAccess = (faculty) => {
+  const role = String(faculty?.role || "").toUpperCase();
+  return Boolean(
+    faculty?.isAdmin === true ||
+    faculty?.is_admin === true ||
+    faculty?.admin === true ||
+    role === "ADMIN" ||
+    role === "ROLE_ADMIN"
+  );
+};
 
 const getNavItems = (isAdmin) => {
   const items = [
@@ -35,6 +42,7 @@ const getNavItems = (isAdmin) => {
         { icon: FolderOpen,      label: "Create Batch",      key: "create-batch" },
         { icon: BookOpen,        label: "View Batches",      key: "view-batches" },
         { icon: ClipboardList,   label: "Create Assignment", key: "create-assignment" },
+        { icon: ClipboardList,   label: "Assignment List",   key: "assignment-list" },
       ],
     },
     {
@@ -62,25 +70,34 @@ const getNavItems = (isAdmin) => {
   return items;
 };
 
-const Sidebar = ({ activePage, onNavigate }) => {
+const Sidebar = ({ activePage, onNavigate, mobileOpen = false, onMobileClose }) => {
   const [collapsed, setCollapsed] = useState(false);
   const { faculty, logout } = useAuth();
 
-  // TEMPORARY email-based check — swap this out once API field is confirmed:
-  // const isAdmin = faculty?.isAdmin === true;
-  // const isAdmin = faculty?.is_admin === true;
-  const isAdmin = faculty?.email === TEMP_ADMIN_EMAIL;
+  const isAdmin = hasAdminAccess(faculty);
 
   const navItems = getNavItems(isAdmin);
 
   return (
-    <aside className={`
-      relative flex flex-col
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          onClick={onMobileClose}
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          aria-label="Close menu"
+        />
+      )}
+
+      <aside className={`
+      fixed lg:relative z-40 lg:z-auto inset-y-0 left-0 flex flex-col
       bg-[#1C1F23]
       border-r border-gray-800
       transition-all duration-300 ease-in-out
       ${collapsed ? "w-16" : "w-60"}
       min-h-screen shrink-0
+      ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
+      lg:translate-x-0
     `}>
 
       {/* Collapse toggle */}
@@ -143,7 +160,10 @@ const Sidebar = ({ activePage, onNavigate }) => {
                 return (
                   <li key={key}>
                     <button
-                      onClick={() => onNavigate(key)}
+                      onClick={() => {
+                        onNavigate(key);
+                        onMobileClose?.();
+                      }}
                       title={collapsed ? label : undefined}
                       className={`
                         w-full flex items-center gap-3 rounded-lg px-3 py-2.5
@@ -169,7 +189,10 @@ const Sidebar = ({ activePage, onNavigate }) => {
       {/* Logout */}
       <div className="p-2 border-t border-gray-800">
         <button
-          onClick={logout}
+          onClick={() => {
+            onMobileClose?.();
+            logout();
+          }}
           className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5
             text-sm font-medium text-gray-400
             hover:border hover:border-[#F87171] hover:bg-transparent hover:text-[#F87171]
@@ -181,7 +204,8 @@ const Sidebar = ({ activePage, onNavigate }) => {
           {!collapsed && <span>Logout</span>}
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useAdmin } from "../../context/AdminContext";
 import { FileUp, CheckCircle, AlertCircle } from "lucide-react";
+import axios from "axios";
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
 const StudentBulkUpload = () => {
   const { loading } = useAdmin();
@@ -28,15 +31,20 @@ const StudentBulkUpload = () => {
     formData.append("file", file);
 
     try {
-      const BASE_URL = import.meta.env.VITE_API_BASE_URL;
-      const response = await fetch(
+      const response = await axios.post(
         `${BASE_URL}/faculty/admin/students/bulk-upload`,
-        { method: "POST", body: formData, credentials: "include" }
+        formData,
+        {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
       );
 
-      const data = await response.json();
+      const data = response.data;
 
-      if (response.ok && data.success) {
+      if (data?.success) {
         setResult({
           success: true,
           message: data.message,
@@ -48,7 +56,8 @@ const StudentBulkUpload = () => {
         setResult({ success: false, message: data.message || "Upload failed" });
       }
     } catch (error) {
-      setResult({ success: false, message: error.message || "Network error occurred" });
+      const message = error?.response?.data?.message || error.message || "Network error occurred";
+      setResult({ success: false, message });
     } finally {
       setUploading(false);
     }
