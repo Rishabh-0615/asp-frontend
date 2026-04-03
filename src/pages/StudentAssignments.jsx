@@ -1,27 +1,75 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Clock3, FileText, RefreshCw, Upload } from "lucide-react";
+import { Clock3, FileText, RefreshCw, Upload, Eye } from "lucide-react";
 import { useAssignment } from "../context/AssignmentContext";
 import { useStudentAuth } from "../context/StudentAuthContext";
+import AssignmentUploadModal from "../components/AssignmentUploadModal";
+import SubmissionPreviewModal, { prefetchSubmissionPreview } from "../components/SubmissionPreviewModal";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+
+const STUDENT_ALLOWED_UPLOAD_TYPES = [
+  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
+  'jpg', 'jpeg', 'png', 'txt', 'md',
+  'c', 'cpp', 'cc', 'cxx', 'h', 'hpp',
+  'java', 'py', 'js', 'jsx', 'ts', 'tsx',
+  'html', 'css', 'sql', 'json', 'xml', 'yaml', 'yml',
+  'zip', 'rar', '7z'
+];
 
 const StudentAssignments = () => {
   const { getStudentAssignments, loading } = useAssignment();
   const { student } = useStudentAuth();
   const [rows, setRows] = useState([]);
+  const [submissionsByAssignment, setSubmissionsByAssignment] = useState({});
   const [subjectFilter, setSubjectFilter] = useState("ALL");
   const [error, setError] = useState(null);
   const [uploadingById, setUploadingById] = useState({});
   const [uploadMessageById, setUploadMessageById] = useState({});
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [activeUploadRow, setActiveUploadRow] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewSubmission, setPreviewSubmission] = useState(null);
+
+  const groupLatestSubmissions = (items) => {
+    const sorted = [...(items || [])].sort((a, b) => {
+      const aTime = a?.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+      const bTime = b?.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const grouped = {};
+    sorted.forEach((submission) => {
+      if (!submission?.assignmentId || grouped[submission.assignmentId]) {
+        return;
+      }
+      if (submission.contentType && submission.contentType !== "STUDENT_SUBMISSION") {
+        return;
+      }
+      grouped[submission.assignmentId] = submission;
+    });
+
+    return grouped;
+  };
 
   const load = async () => {
     setError(null);
     try {
-      const data = await getStudentAssignments();
-      setRows(data || []);
+      const [assignmentRows, submissionRows] = await Promise.all([
+        getStudentAssignments(),
+        axios.get(`${BASE_URL}/api/submissions/my-submissions`, { withCredentials: true }),
+      ]);
+
+      setRows(assignmentRows || []);
+      const latestByAssignment = groupLatestSubmissions(submissionRows?.data || []);
+      setSubmissionsByAssignment(latestByAssignment);
+
+      Object.values(latestByAssignment).forEach((submission) => {
+        prefetchSubmissionPreview(submission);
+      });
     } catch (err) {
       setRows([]);
+      setSubmissionsByAssignment({});
       setError(err.message);
     }
   };
@@ -68,9 +116,11 @@ const StudentAssignments = () => {
       ? rows
       : rows.filter((row) => (row.subjectName || "") === subjectFilter);
 
+  const selectedPreviewSubmission = useMemo(() => previewSubmission, [previewSubmission]);
+
   const uploadAssignment = async (assignmentId, file) => {
     if (!file) {
-      return;
+      return null;
     }
 
     setUploadMessageById((prev) => ({ ...prev, [assignmentId]: null }));
@@ -78,23 +128,34 @@ const StudentAssignments = () => {
 
     try {
       const formData = new FormData();
-      formData.append("assignmentId", assignmentId);
       formData.append("file", file);
 
-      const res = await axios.post(`${BASE_URL}/student/assignments/upload`, formData, {
+      const res = await axios.post(
+        `${BASE_URL}/api/submissions/upload?assignmentId=${assignmentId}&contentType=STUDENT_SUBMISSION`,
+        formData,
+        {
         withCredentials: true,
         headers: {
           "Content-Type": "multipart/form-data",
         },
-      });
+      }
+      );
 
       setUploadMessageById((prev) => ({
         ...prev,
         [assignmentId]: {
           success: true,
-          text: res?.data?.message || "Uploaded successfully.",
+          text: res?.data?.fileName
+            ? `Uploaded successfully: ${res.data.fileName}`
+            : "Uploaded successfully.",
         },
       }));
+      setSubmissionsByAssignment((prev) => ({
+        ...prev,
+        [assignmentId]: res.data,
+      }));
+      prefetchSubmissionPreview(res.data);
+      return res.data;
     } catch (err) {
       const msg = err?.response?.data?.message || "Upload failed.";
       setUploadMessageById((prev) => ({
@@ -104,10 +165,40 @@ const StudentAssignments = () => {
           text: msg,
         },
       }));
+      return null;
     } finally {
       setUploadingById((prev) => ({ ...prev, [assignmentId]: false }));
     }
   };
+
+  const openUploadModal = (row) => {
+    setActiveUploadRow(row);
+    setUploadModalOpen(true);
+  };
+
+  const closeUploadModal = () => {
+    if (activeUploadRow && uploadingById[activeUploadRow.assignmentId]) {
+      return;
+    }
+    setUploadModalOpen(false);
+    setActiveUploadRow(null);
+  };
+
+  const openPreview = (submission) => {
+    if (!submission) {
+      return;
+    }
+
+    setPreviewSubmission(submission);
+    setPreviewOpen(true);
+  };
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewSubmission(null);
+  };
+
+  const getLatestSubmission = (assignmentId) => submissionsByAssignment[assignmentId] || null;
 
   return (
     <div>
@@ -217,27 +308,37 @@ const StudentAssignments = () => {
                     : "Only one submission allowed"}
                 </span>
 
-                <input
-                  id={`assignment-upload-${row.assignmentId}`}
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    uploadAssignment(row.assignmentId, file);
-                    e.target.value = "";
-                  }}
-                />
+                {getLatestSubmission(row.assignmentId) && (
+                  <span className="inline-flex items-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
+                    Uploaded
+                  </span>
+                )}
+
+                {getLatestSubmission(row.assignmentId) && (
+                  <button
+                    type="button"
+                    onClick={() => openPreview(getLatestSubmission(row.assignmentId))}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-[#14171B] px-3 py-1.5 text-xs text-gray-300 hover:bg-[#2A2F36]"
+                  >
+                    <Eye size={13} />
+                    View Uploaded
+                  </button>
+                )}
+
                 <button
                   type="button"
-                  disabled={isClosed(row) || !!uploadingById[row.assignmentId]}
-                  onClick={() => {
-                    const input = document.getElementById(`assignment-upload-${row.assignmentId}`);
-                    input?.click();
-                  }}
+                  disabled={isClosed(row) || !!uploadingById[row.assignmentId] || (!!getLatestSubmission(row.assignmentId) && !row.allowMultipleSubmissions)}
+                  onClick={() => openUploadModal(row)}
                   className="inline-flex items-center gap-2 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 px-3 py-1.5 text-xs font-medium text-[#9fdaed] hover:bg-[#00C2FF]/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Upload size={13} />
-                  {uploadingById[row.assignmentId] ? "Uploading..." : "Upload Assignment"}
+                  {uploadingById[row.assignmentId]
+                    ? "Uploading..."
+                    : getLatestSubmission(row.assignmentId) && !row.allowMultipleSubmissions
+                      ? "Uploaded"
+                      : getLatestSubmission(row.assignmentId)
+                        ? "Upload Again"
+                        : "Upload Assignment"}
                 </button>
               </div>
 
@@ -254,6 +355,32 @@ const StudentAssignments = () => {
           ))}
         </div>
       )}
+
+      <AssignmentUploadModal
+        isOpen={uploadModalOpen}
+        onClose={closeUploadModal}
+        assignment={activeUploadRow}
+        allowedTypes={STUDENT_ALLOWED_UPLOAD_TYPES}
+        uploading={activeUploadRow ? !!uploadingById[activeUploadRow.assignmentId] : false}
+        onSubmit={(file) => activeUploadRow ? uploadAssignment(activeUploadRow.assignmentId, file) : Promise.resolve(null)}
+        onSubmitted={(submission) => {
+          setPreviewSubmission(submission);
+          setPreviewOpen(true);
+          if (submission?.assignmentId) {
+            setSubmissionsByAssignment((prev) => ({
+              ...prev,
+              [submission.assignmentId]: submission,
+            }));
+          }
+          prefetchSubmissionPreview(submission);
+        }}
+      />
+
+      <SubmissionPreviewModal
+        isOpen={previewOpen}
+        onClose={closePreview}
+        submission={selectedPreviewSubmission}
+      />
     </div>
   );
 };

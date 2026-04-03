@@ -135,7 +135,7 @@ const StudentBatchesView = ({ myBatches, loading, error, onRefresh, onOpenBatchD
                   <td className="px-6 py-4 text-gray-300">{batch.division}</td>
                   <td className="px-6 py-4 text-gray-300">{batch.baseBatch}</td>
                   <td className="px-6 py-4 text-[#F3F4F6] font-medium">{batch.subjectName}</td>
-                  <td className="px-6 py-4 text-gray-500">{batch.createdAt ? new Date(batch.createdAt).toLocaleString() : "-"}</td>
+                  <td className="px-6 py-4 text-gray-500">{batch.createdAt ? new Date(batch.createdAt).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
                   <td className="px-6 py-4">
                     <button
                       type="button"

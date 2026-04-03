@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import { useBatch } from "../../context/BatchContext";
 import { useAssignment } from "../../context/AssignmentContext";
 
@@ -270,20 +270,22 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
                       {`${row.submittedCount ?? 0} / ${row.totalStudents ?? 0}`}
                     </td>
                     <td className="px-6 py-4 text-[#F59E0B] font-medium">
-                      {row.deadline ? new Date(row.deadline).toLocaleString() : "-"}
+                      {row.deadline ? new Date(row.deadline).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}
                     </td>
                     <td className="px-6 py-4 text-gray-300">{row.isOpen ? "Yes" : "No"}</td>
                     <td className="px-6 py-4 text-gray-500">
-                      {row.createdAt ? new Date(row.createdAt).toLocaleString() : "-"}
+                      {row.createdAt ? new Date(row.createdAt).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}
                     </td>
                     <td className="px-6 py-4">
-                      <button
-                        type="button"
-                        onClick={() => onAssess?.(row.assignmentId)}
-                        className="px-3 py-1.5 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs font-medium hover:bg-[#00C2FF]/20"
-                      >
-                        Evaluation
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onAssess?.(row.assignmentId)}
+                          className="px-3 py-1.5 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs font-medium hover:bg-[#00C2FF]/20"
+                        >
+                          Evaluation
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -315,7 +317,7 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
                   </div>
                   <div className="bg-[#0F1114] border border-gray-700 rounded-lg p-2.5 col-span-2">
                     <p className="text-gray-500">Deadline</p>
-                    <p className="text-[#F59E0B] mt-1">{row.deadline ? new Date(row.deadline).toLocaleString() : "-"}</p>
+                    <p className="text-[#F59E0B] mt-1">{row.deadline ? new Date(row.deadline).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}</p>
                   </div>
                 </div>
 
@@ -355,6 +357,8 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
           </div>
         </>
       )}
+
+
     </div>
   );
 };

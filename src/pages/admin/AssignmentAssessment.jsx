@@ -5,10 +5,8 @@ import {
   CheckCircle2,
   Download,
   Eye,
-  ExternalLink,
   FileCode2,
   FileText,
-  Link2,
   RefreshCw,
   Search,
   Smile,
@@ -17,8 +15,18 @@ import {
   X,
 } from "lucide-react";
 import { useAssignment } from "../../context/AssignmentContext";
+import { Document, Page, pdfjs } from "react-pdf";
+
+import "react-pdf/dist/Page/AnnotationLayer.css";
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 const TEXT_PREVIEW_EXTENSIONS = new Set(["cpp", "java", "txt", "html", "css"]);
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const PDF_FETCH_CACHE = new Map();
 
 const formatDateTime = (value) => {
   if (!value) {
@@ -36,6 +44,7 @@ const formatDateTime = (value) => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: undefined,
   });
 };
 
@@ -54,17 +63,73 @@ const formatSubmittedAt = (value) => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: undefined,
   });
 };
 
-const downloadFile = (fileUrl, fileName) => {
-  if (!fileUrl) return;
+const downloadFile = async (submissionId, fileName, fallbackUrl) => {
+  if (submissionId) {
+    try {
+      const response = await fetch(`${BASE_URL}/api/submissions/${submissionId}/download`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Primary download failed.");
+      }
+
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      const objectUrl = URL.createObjectURL(blob);
+      link.href = objectUrl;
+      link.download = fileName || "submission";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+      return;
+    } catch (_) {
+      // Fall through to URL proxy fallback.
+    }
+  }
+
+  if (fallbackUrl) {
+    const params = new URLSearchParams({
+      fileUrl: fallbackUrl,
+      fileName: fileName || "submission",
+    });
+    const response = await fetch(`${BASE_URL}/api/submissions/file/download?${params.toString()}`, {
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to download file.");
+    }
+
+    const blob = await response.blob();
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    link.download = fileName || "submission";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+    return;
+  }
+
+  throw new Error("Failed to download file.");
+};
+
+const triggerBlobDownload = (blob, fileName) => {
   const link = document.createElement("a");
-  link.href = fileUrl;
+  const objectUrl = URL.createObjectURL(blob);
+  link.href = objectUrl;
   link.download = fileName || "submission";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
 };
 
 const toPercentText = (value) => {
@@ -82,6 +147,30 @@ const fileExt = (fileName) => {
   return idx >= 0 ? fileName.slice(idx + 1).toLowerCase() : "";
 };
 
+const previewEndpointFor = (submissionId, fileUrl, fileName) => {
+  if (submissionId) {
+    return `${BASE_URL}/api/submissions/${submissionId}/preview`;
+  }
+
+  const params = new URLSearchParams({
+    fileUrl: fileUrl || "",
+    fileName: fileName || "submission.pdf",
+  });
+  return `${BASE_URL}/api/submissions/file/preview?${params.toString()}`;
+};
+
+const pdfDownloadEndpointFor = (submissionId, fileUrl, fileName) => {
+  if (submissionId) {
+    return `${BASE_URL}/api/submissions/${submissionId}/download`;
+  }
+
+  const params = new URLSearchParams({
+    fileUrl: fileUrl || "",
+    fileName: fileName || "submission.pdf",
+  });
+  return `${BASE_URL}/api/submissions/file/download?${params.toString()}`;
+};
+
 const AssignmentAssessment = ({ assignmentId, onBack }) => {
   const { loading, getAssignmentAssessment } = useAssignment();
 
@@ -94,13 +183,33 @@ const AssignmentAssessment = ({ assignmentId, onBack }) => {
   const [showInlineFile, setShowInlineFile] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [submissionFilter, setSubmissionFilter] = useState("ALL");
+  const [pdfBlobUrl, setPdfBlobUrl] = useState("");
+  const [pdfPageCount, setPdfPageCount] = useState(0);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
+  const [pdfPreviewSrc, setPdfPreviewSrc] = useState("");
+  const [pdfFallbackActive, setPdfFallbackActive] = useState(false);
 
   const rows = assessment?.students || [];
 
-  const selectedFileUrl = selectedStudent?.fileUrl || null;
+  const selectedSubmissionId = selectedStudent?.submissionId || null;
   const selectedFileName = selectedStudent?.fileName || "";
   const selectedFileExt = fileExt(selectedFileName);
   const shouldPreviewAsText = TEXT_PREVIEW_EXTENSIONS.has(selectedFileExt);
+  const shouldPreviewAsPdf = selectedFileExt === "pdf";
+
+  const downloadWithCache = async (submission) => {
+    const cacheKey = submission?.submissionId || `${submission?.fileUrl || ""}|${submission?.fileName || ""}`;
+    const cached = PDF_FETCH_CACHE.get(cacheKey);
+    const isPdf = fileExt(submission?.fileName || "") === "pdf";
+
+    if (cached?.blob && isPdf) {
+      triggerBlobDownload(cached.blob, submission?.fileName);
+      return;
+    }
+
+    await downloadFile(submission?.submissionId, submission?.fileName, submission?.fileUrl);
+  };
 
   // Filter and search rows
   const filteredRows = useMemo(() => {
@@ -152,13 +261,37 @@ const AssignmentAssessment = ({ assignmentId, onBack }) => {
       setFilePreview("");
       setPreviewError(null);
 
-      if (!selectedStudent || !selectedStudent.submitted || !selectedFileUrl || !shouldPreviewAsText) {
+      if (!selectedStudent || !selectedStudent.submitted || !shouldPreviewAsText) {
         return;
       }
 
       setPreviewLoading(true);
       try {
-        const response = await fetch(selectedFileUrl);
+        let response;
+        if (selectedSubmissionId) {
+          response = await fetch(`${BASE_URL}/api/submissions/${selectedSubmissionId}/preview`, {
+            credentials: "include",
+          });
+
+          if (!response.ok && selectedStudent.fileUrl) {
+            const params = new URLSearchParams({
+              fileUrl: selectedStudent.fileUrl,
+              fileName: selectedStudent.fileName || "submission.txt",
+            });
+            response = await fetch(`${BASE_URL}/api/submissions/file/preview?${params.toString()}`, {
+              credentials: "include",
+            });
+          }
+        } else {
+          const params = new URLSearchParams({
+            fileUrl: selectedStudent.fileUrl,
+            fileName: selectedStudent.fileName || "submission.txt",
+          });
+          response = await fetch(`${BASE_URL}/api/submissions/file/preview?${params.toString()}`, {
+            credentials: "include",
+          });
+        }
+
         if (!response.ok) {
           throw new Error("Unable to load file preview.");
         }
@@ -182,11 +315,86 @@ const AssignmentAssessment = ({ assignmentId, onBack }) => {
     return () => {
       cancelled = true;
     };
-  }, [selectedStudent, selectedFileUrl, shouldPreviewAsText]);
+  }, [selectedStudent, selectedSubmissionId, shouldPreviewAsText]);
 
   useEffect(() => {
-    setShowInlineFile(false);
+    if (selectedStudent) {
+      setShowInlineFile(true);
+    }
   }, [selectedStudent]);
+
+  useEffect(() => {
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+    }
+    setPdfBlobUrl("");
+    setPdfPreviewSrc("");
+    setPdfPageCount(0);
+    setPdfError(null);
+    setPdfLoading(false);
+    setPdfFallbackActive(false);
+  }, [selectedStudent]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPdfPreview = async () => {
+      if (!selectedStudent || !selectedStudent.submitted || !showInlineFile || !shouldPreviewAsPdf) {
+        return;
+      }
+
+      setPdfLoading(true);
+      setPdfError(null);
+      setPdfFallbackActive(false);
+
+      try {
+        const cacheKey = selectedSubmissionId || `${selectedStudent.fileUrl || ""}|${selectedStudent.fileName || ""}`;
+        const cached = PDF_FETCH_CACHE.get(cacheKey);
+        if (cached) {
+          if (!cancelled) {
+            if (pdfBlobUrl) {
+              URL.revokeObjectURL(pdfBlobUrl);
+            }
+            setPdfBlobUrl(URL.createObjectURL(cached.blob));
+            setPdfPreviewSrc(cached.previewSrc);
+          }
+          return;
+        }
+
+        const response = await fetch(
+          pdfDownloadEndpointFor(selectedSubmissionId, selectedStudent.fileUrl, selectedStudent.fileName),
+          { credentials: "include" }
+        );
+
+        if (!response.ok) {
+          throw new Error("Unable to load PDF preview.");
+        }
+
+        const blob = await response.blob();
+        if (!cancelled) {
+          const objectUrl = URL.createObjectURL(blob);
+          const previewSrc = previewEndpointFor(selectedSubmissionId, selectedStudent.fileUrl, selectedStudent.fileName);
+          PDF_FETCH_CACHE.set(cacheKey, { blob, previewSrc });
+          setPdfBlobUrl(objectUrl);
+          setPdfPreviewSrc(previewSrc);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPdfError(err.message || "Unable to load PDF preview.");
+        }
+      } finally {
+        if (!cancelled) {
+          setPdfLoading(false);
+        }
+      }
+    };
+
+    loadPdfPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStudent, showInlineFile, shouldPreviewAsPdf, selectedSubmissionId]);
 
   const summaryCards = useMemo(
     () => [
@@ -397,33 +605,33 @@ const AssignmentAssessment = ({ assignmentId, onBack }) => {
                           </td>
                           <td className="px-6 py-4 text-gray-300">{toPercentText(row.aiGeneratedPercent)}</td>
                           <td className="px-6 py-4">
-                            {row.submitted && row.fileUrl ? (
-                              <div className="flex items-center gap-2">
+                            {row.submitted ? (
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedStudent(row)}
-                                  title="View submission details and code"
-                                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] hover:bg-[#00C2FF]/20 transition-colors"
+                                  onClick={() => {
+                                    setSelectedStudent(row);
+                                    setShowInlineFile(true);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs hover:bg-[#00C2FF]/20 transition-colors"
                                 >
                                   <Eye size={14} />
+                                  Preview
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => downloadFile(row.fileUrl, row.fileName)}
-                                  title="Download file"
-                                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors"
+                                  onClick={async () => {
+                                    try {
+                                      await downloadWithCache(row);
+                                    } catch (err) {
+                                      console.error(err);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs hover:bg-amber-500/20 transition-colors"
                                 >
                                   <Download size={14} />
+                                  Download
                                 </button>
-                                <a
-                                  href={row.fileUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  title="Open file in new tab"
-                                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
-                                >
-                                  <ExternalLink size={14} />
-                                </a>
                               </div>
                             ) : (
                               <span
@@ -470,30 +678,31 @@ const AssignmentAssessment = ({ assignmentId, onBack }) => {
                         </div>
                       </div>
 
-                      {row.submitted && row.fileUrl ? (
+                      {row.submitted ? (
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setSelectedStudent(row)}
+                            onClick={() => {
+                              setSelectedStudent(row);
+                              setShowInlineFile(true);
+                            }}
                             className="flex-1 min-h-10 px-3 py-2 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs"
                           >
                             View
                           </button>
                           <button
                             type="button"
-                            onClick={() => downloadFile(row.fileUrl, row.fileName)}
+                            onClick={async () => {
+                              try {
+                                await downloadWithCache(row);
+                              } catch (err) {
+                                console.error(err);
+                              }
+                            }}
                             className="flex-1 min-h-10 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs"
                           >
                             Download
                           </button>
-                          <a
-                            href={row.fileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex-1 min-h-10 inline-flex items-center justify-center px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 text-xs"
-                          >
-                            Open
-                          </a>
                         </div>
                       ) : null}
                     </div>
@@ -526,86 +735,69 @@ const AssignmentAssessment = ({ assignmentId, onBack }) => {
       </div>
 
       {selectedStudent && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl bg-[#1C1F23] border border-gray-700 rounded-2xl shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-              <h3 className="text-[#F3F4F6] font-semibold flex items-center gap-2">
-                <FileCode2 size={17} className="text-[#00C2FF]" />
-                Submission Details
-              </h3>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl h-[90vh] bg-[#111317] border border-gray-700 rounded-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-[#1C1F23]">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-[#F3F4F6]">Submission Preview</h2>
+                <p className="text-xs text-gray-400 truncate mt-0.5">{selectedStudent.fileName || "file"}</p>
+              </div>
               <button
                 type="button"
-                onClick={() => setSelectedStudent(null)}
-                className="text-gray-400 hover:text-[#F3F4F6]"
+                onClick={() => {
+                  if (pdfBlobUrl) {
+                    URL.revokeObjectURL(pdfBlobUrl);
+                  }
+                  setPdfBlobUrl("");
+                  setSelectedStudent(null);
+                }}
+                className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-700 bg-[#111317] text-gray-300 hover:text-[#F3F4F6] hover:bg-gray-700 transition-colors"
+                aria-label="Close preview"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
-
-            <div className="p-6 space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="bg-[#0F1114] border border-gray-700 rounded-xl p-4">
-                  <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Student Name</p>
-                  <p className="text-[#F3F4F6] font-medium">{selectedStudent.name || "-"}</p>
-                </div>
-                <div className="bg-[#0F1114] border border-gray-700 rounded-xl p-4">
-                  <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Roll Number</p>
-                  <p className="text-[#F3F4F6] font-medium">{selectedStudent.rollNo || "-"}</p>
-                </div>
-                <div className="bg-[#0F1114] border border-gray-700 rounded-xl p-4">
-                  <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">File Name</p>
-                  <p className="text-[#F3F4F6] font-medium break-all">{selectedStudent.fileName || "-"}</p>
-                </div>
-                <div className="bg-[#0F1114] border border-gray-700 rounded-xl p-4">
-                  <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">AI Generated %</p>
-                  <p className="text-[#F3F4F6] font-medium">{toPercentText(selectedStudent.aiGeneratedPercent)}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowInlineFile((prev) => !prev)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-gray-700 bg-[#111317] text-[#F3F4F6] hover:bg-[#1A1D22]"
-                >
-                  <Link2 size={14} />
-                  {showInlineFile ? "Hide Inline Preview" : "Open Submission Here"}
-                </button>
-                <a
-                  href={selectedStudent.fileUrl || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-4 py-2 rounded-xl text-sm border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] hover:bg-[#00C2FF]/20"
-                >
-                  Open Original File
-                </a>
-              </div>
-
-              {showInlineFile && selectedStudent.fileUrl && !shouldPreviewAsText && (
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">In-Page File View</p>
-                  <div className="bg-[#0F1114] border border-gray-700 rounded-xl overflow-hidden h-105">
+            <div className="flex-1 overflow-auto bg-[#0F1114] p-4">
+              {showInlineFile && shouldPreviewAsPdf && (
+                <>
+                  {pdfLoading && (
+                    <div className="h-full flex items-center justify-center text-gray-400">Loading preview...</div>
+                  )}
+                  {!pdfLoading && pdfError && !pdfPreviewSrc && (
+                    <div className="h-full flex items-center justify-center text-red-300">{pdfError}</div>
+                  )}
+                  {!pdfLoading && (pdfPreviewSrc || pdfBlobUrl) && (
                     <iframe
-                      title="Submission file preview"
-                      src={selectedStudent.fileUrl}
-                      className="w-full h-full"
+                      src={pdfPreviewSrc || pdfBlobUrl}
+                      title="Submission PDF Preview"
+                      className="w-full h-full border-0 rounded-lg bg-white"
                     />
-                  </div>
-                </div>
+                  )}
+                </>
               )}
 
-              {shouldPreviewAsText && (
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">File Preview</p>
-                  <div className="bg-[#0F1114] border border-gray-700 rounded-xl p-4 max-h-80 overflow-auto">
-                    {previewLoading ? (
-                      <p className="text-sm text-gray-400">Loading file preview...</p>
-                    ) : previewError ? (
-                      <p className="text-sm text-red-300">{previewError}</p>
-                    ) : (
-                      <pre className="text-xs text-gray-200 whitespace-pre-wrap wrap-break-word">{filePreview || "No preview available."}</pre>
-                    )}
-                  </div>
+              {showInlineFile && (selectedSubmissionId || selectedStudent.fileUrl) && !shouldPreviewAsText && !shouldPreviewAsPdf && (
+                <iframe
+                  title="Submission file preview"
+                  src={selectedSubmissionId
+                    ? `${BASE_URL}/api/submissions/${selectedSubmissionId}/preview`
+                    : `${BASE_URL}/api/submissions/file/preview?${new URLSearchParams({
+                        fileUrl: selectedStudent.fileUrl || "",
+                        fileName: selectedStudent.fileName || "submission",
+                      }).toString()}`}
+                  className="w-full h-full border-0 rounded-lg bg-white"
+                />
+              )}
+
+              {showInlineFile && shouldPreviewAsText && (
+                <div className="h-full rounded-lg border border-gray-700 bg-[#111317] p-4 overflow-auto">
+                  {previewLoading ? (
+                    <p className="text-sm text-gray-400">Loading file preview...</p>
+                  ) : previewError ? (
+                    <p className="text-sm text-red-300">{previewError}</p>
+                  ) : (
+                    <pre className="text-xs text-gray-200 whitespace-pre-wrap wrap-break-word leading-relaxed">{filePreview || "No preview available."}</pre>
+                  )}
                 </div>
               )}
             </div>

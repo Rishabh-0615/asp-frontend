@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, Download, Eye, FileText, RefreshCw, UploadCloud } from "lucide-react";
+import { ArrowLeft, ChevronDown, Download, Eye, FileText, RefreshCw, UploadCloud, X } from "lucide-react";
 import { useBatch } from "../../context/BatchContext";
 import axios from "axios";
+import AssignmentUploadModal from "../../components/AssignmentUploadModal";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+
+const STUDENT_ALLOWED_UPLOAD_TYPES = [
+  "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx",
+  "jpg", "jpeg", "png", "txt", "md",
+  "c", "cpp", "cc", "cxx", "h", "hpp",
+  "java", "py", "js", "jsx", "ts", "tsx",
+  "html", "css", "sql", "json", "xml", "yaml", "yml",
+  "zip", "rar", "7z"
+];
 
 const formatDateTime = (value) => {
   if (!value) {
@@ -21,6 +31,7 @@ const formatDateTime = (value) => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: undefined,
   });
 };
 
@@ -30,12 +41,21 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
   const [activeTab, setActiveTab] = useState("assignments");
   const [details, setDetails] = useState(null);
   const [error, setError] = useState(null);
+  const [manualAssignmentId, setManualAssignmentId] = useState("");
+  const [manuals, setManuals] = useState([]);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
   const [manualMessage, setManualMessage] = useState("");
-  const [manualAction, setManualAction] = useState("upload");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewSrc, setPreviewSrc] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
   const [sortBy, setSortBy] = useState("deadline-asc");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [uploadingById, setUploadingById] = useState({});
   const [uploadMessageById, setUploadMessageById] = useState({});
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [activeUploadRow, setActiveUploadRow] = useState(null);
   const manualInputRef = useRef(null);
   const sortMenuRef = useRef(null);
 
@@ -90,6 +110,40 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
   const assignments = details?.assignments || [];
   const students = details?.students || [];
 
+  useEffect(() => {
+    if (!assignments.length) {
+      setManualAssignmentId("");
+      setManuals([]);
+      return;
+    }
+
+    const exists = assignments.some((row) => row.assignmentId === manualAssignmentId);
+    if (!manualAssignmentId || !exists) {
+      setManualAssignmentId(assignments[0].assignmentId);
+    }
+  }, [assignments, manualAssignmentId]);
+
+  const fetchManuals = async (assignmentId) => {
+    if (!assignmentId) {
+      setManuals([]);
+      return;
+    }
+
+    setManualLoading(true);
+    try {
+      const res = await axios.get(`${BASE_URL}/api/submissions/assignment/${assignmentId}/lab-manuals`);
+      setManuals(Array.isArray(res.data) ? res.data : []);
+    } catch (_) {
+      setManuals([]);
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchManuals(manualAssignmentId);
+  }, [manualAssignmentId]);
+
   const sortedAssignments = useMemo(() => {
     const clone = [...assignments];
 
@@ -119,21 +173,122 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
     return clone;
   }, [assignments, sortBy]);
 
-  const triggerManualPicker = (action) => {
-    setManualAction(action);
+  const triggerManualPicker = () => {
+    if (!manualAssignmentId) {
+      setManualMessage("Please select an assignment first.");
+      return;
+    }
     manualInputRef.current?.click();
   };
 
-  const onManualFileSelect = (event) => {
+  const onManualFileSelect = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    const actionLabel = manualAction === "change" ? "Manual changed" : "Manual selected";
-    setManualMessage(`${actionLabel}: ${file.name}`);
+    setManualSaving(true);
+    setManualMessage("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      await axios.post(
+        `${BASE_URL}/api/submissions/upload?assignmentId=${manualAssignmentId}&contentType=LAB_MANUAL`,
+        formData,
+        {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      setManualMessage(`Manual uploaded: ${file.name}`);
+      await fetchManuals(manualAssignmentId);
+    } catch (err) {
+      setManualMessage(err?.response?.data?.message || "Manual upload failed.");
+    } finally {
+      setManualSaving(false);
+    }
     event.target.value = "";
   };
+
+  const closePreview = () => {
+    if (previewSrc) {
+      URL.revokeObjectURL(previewSrc);
+    }
+    setPreviewSrc("");
+    setPreviewLoading(false);
+    setPreviewError("");
+    setPreviewOpen(false);
+  };
+
+  const handlePreviewClick = async () => {
+    if (!latestManual?.id) {
+      setManualMessage("File information not available.");
+      return;
+    }
+
+    if (previewSrc) {
+      URL.revokeObjectURL(previewSrc);
+      setPreviewSrc("");
+    }
+
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError("");
+
+    try {
+      const res = await axios.get(
+        `${BASE_URL}/api/submissions/lab-manuals/${latestManual.id}/download`,
+        {
+          responseType: "blob",
+          withCredentials: true,
+        }
+      );
+
+      const blobUrl = URL.createObjectURL(res.data);
+      setPreviewSrc(blobUrl);
+    } catch (err) {
+      setPreviewError("Unable to preview this PDF.");
+      console.error(err);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleDownloadClick = async () => {
+    if (!latestManual?.id || !latestManual?.fileName) {
+      setManualMessage("File information not available.");
+      return;
+    }
+
+    try {
+      const res = await axios.get(
+        `${BASE_URL}/api/submissions/lab-manuals/${latestManual.id}/download`,
+        {
+          responseType: "blob",
+          withCredentials: true,
+        }
+      );
+
+      const url = window.URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = latestManual.fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setManualMessage("Downloaded successfully.");
+    } catch (err) {
+      setManualMessage("Failed to download file.");
+      console.error(err);
+    }
+  };
+
+  const latestManual = manuals.length > 0 ? manuals[0] : null;
 
   const isClosed = (row) => {
     if (row?.closed === true || row?.isOpen === false) {
@@ -147,7 +302,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
 
   const uploadAssignment = async (assignmentId, file) => {
     if (!file) {
-      return;
+      return false;
     }
 
     setUploadMessageById((prev) => ({ ...prev, [assignmentId]: null }));
@@ -172,6 +327,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
           text: res?.data?.message || "Uploaded successfully.",
         },
       }));
+      return true;
     } catch (err) {
       const msg = err?.response?.data?.message || "Upload failed.";
       setUploadMessageById((prev) => ({
@@ -181,9 +337,23 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
           text: msg,
         },
       }));
+      return false;
     } finally {
       setUploadingById((prev) => ({ ...prev, [assignmentId]: false }));
     }
+  };
+
+  const openUploadModal = (row) => {
+    setActiveUploadRow(row);
+    setUploadModalOpen(true);
+  };
+
+  const closeUploadModal = () => {
+    if (activeUploadRow && uploadingById[activeUploadRow.assignmentId]) {
+      return;
+    }
+    setUploadModalOpen(false);
+    setActiveUploadRow(null);
   };
 
   const sortLabel = {
@@ -272,7 +442,9 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
           </div>
           <div className="rounded-xl border border-gray-700 bg-[#0F1114] p-4 mb-4">
             <p className="text-xs uppercase tracking-wide text-gray-500">Manual Name</p>
-            <p className="text-sm text-gray-300 mt-1">{header.labManualName || "No manual uploaded yet"}</p>
+            <p className="text-sm text-gray-300 mt-1">
+              {manualLoading ? "Loading..." : latestManual?.fileName || "No manual uploaded yet"}
+            </p>
           </div>
           <input
             ref={manualInputRef}
@@ -284,7 +456,8 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-2">
             <button
               type="button"
-              onClick={() => setManualMessage("Manual preview")}
+              disabled={!latestManual?.fileUrl}
+              onClick={handlePreviewClick}
               className="ui-btn ui-btn-secondary"
             >
               <Eye size={14} />
@@ -292,7 +465,8 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
             </button>
             <button
               type="button"
-              onClick={() => setManualMessage("Manual download")}
+              disabled={!latestManual?.id}
+              onClick={handleDownloadClick}
               className="ui-btn ui-btn-secondary"
             >
               <Download size={14} />
@@ -301,11 +475,12 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
             {canManageManual && (
               <button
                 type="button"
-                onClick={() => triggerManualPicker(header.labManualName ? "change" : "upload")}
+                disabled={!manualAssignmentId || manualSaving}
+                onClick={triggerManualPicker}
                 className="ui-btn ui-btn-accent"
               >
                 <UploadCloud size={14} />
-                {header.labManualName ? "Change Manual" : "Upload Manual"}
+                {manualSaving ? "Uploading..." : latestManual ? "Change Manual" : "Upload Manual"}
               </button>
             )}
           </div>
@@ -428,23 +603,10 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
                                 )}
                                 {isStudentView && (
                                   <>
-                                    <input
-                                      id={`details-upload-${row.assignmentId}`}
-                                      type="file"
-                                      className="hidden"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        uploadAssignment(row.assignmentId, file);
-                                        e.target.value = "";
-                                      }}
-                                    />
                                     <button
                                       type="button"
                                       disabled={isClosed(row) || !!uploadingById[row.assignmentId]}
-                                      onClick={() => {
-                                        const input = document.getElementById(`details-upload-${row.assignmentId}`);
-                                        input?.click();
-                                      }}
+                                      onClick={() => openUploadModal(row)}
                                       className="ui-btn ui-btn-accent min-h-9 px-3 py-1.5 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       {uploadingById[row.assignmentId] ? "Uploading..." : "Upload Assignment"}
@@ -503,23 +665,10 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
                           )}
                           {isStudentView && (
                             <>
-                              <input
-                                id={`details-upload-mobile-${row.assignmentId}`}
-                                type="file"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  uploadAssignment(row.assignmentId, file);
-                                  e.target.value = "";
-                                }}
-                              />
                               <button
                                 type="button"
                                 disabled={isClosed(row) || !!uploadingById[row.assignmentId]}
-                                onClick={() => {
-                                  const input = document.getElementById(`details-upload-mobile-${row.assignmentId}`);
-                                  input?.click();
-                                }}
+                                onClick={() => openUploadModal(row)}
                                 className="ui-btn ui-btn-accent col-span-2 min-h-10 px-3 py-2 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {uploadingById[row.assignmentId] ? "Uploading..." : "Upload Assignment"}
@@ -586,6 +735,52 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
           </div>
         )}
       </div>
+
+      {previewOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl h-[90vh] bg-[#111317] border border-gray-700 rounded-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-[#1C1F23]">
+              <h2 className="text-lg font-semibold text-[#F3F4F6]">Lab Manual Preview</h2>
+              <button
+                type="button"
+                onClick={closePreview}
+                className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-700 bg-[#111317] text-gray-300 hover:text-[#F3F4F6] hover:bg-gray-700 transition-colors"
+                aria-label="Close preview"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-[#0F1114] p-4">
+              {previewLoading && (
+                <div className="h-full flex items-center justify-center text-gray-400">Loading preview...</div>
+              )}
+              {!previewLoading && previewError && (
+                <div className="h-full flex items-center justify-center text-red-300">{previewError}</div>
+              )}
+              {!previewLoading && !previewError && previewSrc ? (
+                <iframe
+                  src={previewSrc}
+                  title="Lab Manual Preview"
+                  className="w-full h-full border-0 rounded-lg bg-white"
+                />
+              ) : (
+                !previewLoading && !previewError && (
+                  <div className="h-full flex items-center justify-center text-gray-400">Preparing preview...</div>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AssignmentUploadModal
+        isOpen={uploadModalOpen}
+        onClose={closeUploadModal}
+        assignment={activeUploadRow}
+        allowedTypes={STUDENT_ALLOWED_UPLOAD_TYPES}
+        uploading={activeUploadRow ? !!uploadingById[activeUploadRow.assignmentId] : false}
+        onSubmit={(file) => activeUploadRow ? uploadAssignment(activeUploadRow.assignmentId, file) : Promise.resolve(false)}
+      />
     </div>
   );
 };

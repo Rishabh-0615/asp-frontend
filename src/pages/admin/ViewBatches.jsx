@@ -94,7 +94,7 @@ const ViewBatches = ({ onOpenBatchDetails }) => {
                     <td className="px-6 py-4 text-[#F3F4F6] font-medium">{r.subjectName}</td>
                     <td className="px-6 py-4 text-[#00C2FF] font-semibold">{r.studentCount}</td>
                     <td className="px-6 py-4 text-gray-500">
-                      {r.createdAt ? new Date(r.createdAt).toLocaleString() : "-"}
+                      {r.createdAt ? new Date(r.createdAt).toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}
                     </td>
                     <td className="px-6 py-4">
                       <button
