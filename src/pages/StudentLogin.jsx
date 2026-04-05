@@ -46,7 +46,7 @@ const BgPaths = () => (
 /* ===============================
    Student Login Page
 ================================ */
-const StudentLogin = ({ onLoginSuccess }) => {
+const StudentLogin = ({ onLoginSuccess, onForgotPassword }) => {
   const { login, activateAccount } = useStudentAuth();
 
   const [form, setForm] = useState({ email: "", password: "" });
@@ -248,14 +248,25 @@ const StudentLogin = ({ onLoginSuccess }) => {
                 </button>
               </form>
 
-              {/* Link back to faculty login */}
-              <div className="mt-5 pt-4 border-t border-gray-800 text-center">
-                <a
-                  href="/"
-                  className="text-sm text-gray-500 hover:text-[#00C2FF] transition-colors"
-                >
-                  Faculty login →
-                </a>
+              {/* Forgot Password & Faculty Login Links */}
+              <div className="mt-5 pt-4 border-t border-gray-800 space-y-2">
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={onForgotPassword}
+                    className="text-sm text-gray-500 hover:text-[#00C2FF] transition-colors"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+                <div className="text-center">
+                  <a
+                    href="/"
+                    className="text-sm text-gray-500 hover:text-[#00C2FF] transition-colors"
+                  >
+                    Faculty login →
+                  </a>
+                </div>
               </div>
             </div>
 

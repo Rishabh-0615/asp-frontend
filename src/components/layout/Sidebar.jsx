@@ -14,6 +14,7 @@ import {
   ClipboardList,
   FolderOpen,
   ShieldCheck,
+  User,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -49,6 +50,7 @@ const getNavItems = (isAdmin) => {
       section: "System",
       items: [
         { icon: Settings,        label: "Settings",          key: "settings" },
+        { icon: User,            label: "Profile",           key: "profile" },
       ],
     },
   ];
@@ -72,11 +74,29 @@ const getNavItems = (isAdmin) => {
 
 const Sidebar = ({ activePage, onNavigate, mobileOpen = false, onMobileClose }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);  // ← ADD: Track logout state
   const { faculty, logout } = useAuth();
 
   const isAdmin = hasAdminAccess(faculty);
 
   const navItems = getNavItems(isAdmin);
+
+  const handleLogout = async () => {
+    try {
+      setLoggingOut(true);
+      await logout();
+      // Redirect safely after logout
+      window.history.replaceState({}, "", "/");
+      window.location.href = "/";
+    } catch (err) {
+      console.error("Logout failed:", err);
+      // Still redirect even if logout fails
+      window.history.replaceState({}, "", "/");
+      window.location.href = "/";
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <>
@@ -189,19 +209,19 @@ const Sidebar = ({ activePage, onNavigate, mobileOpen = false, onMobileClose }) 
       {/* Logout */}
       <div className="p-2 border-t border-gray-800">
         <button
-          onClick={() => {
+          onClick={async () => {
             onMobileClose?.();
-            logout();
+            await handleLogout();
           }}
+          disabled={loggingOut}
           className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5
-            text-sm font-medium text-gray-400
-            hover:border hover:border-[#F87171] hover:bg-transparent hover:text-[#F87171]
-            transition-all duration-150
+            text-sm font-medium transition-all duration-150
             ${collapsed ? "justify-center" : ""}
+            ${loggingOut ? "opacity-50 cursor-not-allowed" : "text-gray-400 hover:border hover:border-[#F87171] hover:bg-transparent hover:text-[#F87171]"}
           `}
         >
-          <LogOut size={16} className="shrink-0" />
-          {!collapsed && <span>Logout</span>}
+          <LogOut size={16} className={`shrink-0 ${loggingOut ? "animate-spin" : ""}`} />
+          {!collapsed && <span>{loggingOut ? "Logging out..." : "Logout"}</span>}
         </button>
       </div>
       </aside>

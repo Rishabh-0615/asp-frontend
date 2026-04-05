@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronDown, Download, Eye, FileText, RefreshCw, UploadCloud
 import { useBatch } from "../../context/BatchContext";
 import axios from "axios";
 import AssignmentUploadModal from "../../components/AssignmentUploadModal";
+import { useNavigate } from "react-router-dom";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
@@ -58,6 +59,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
   const [activeUploadRow, setActiveUploadRow] = useState(null);
   const manualInputRef = useRef(null);
   const sortMenuRef = useRef(null);
+  const navigate = useNavigate();
 
   const load = async () => {
     if (!batchId) {
@@ -123,16 +125,17 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
     }
   }, [assignments, manualAssignmentId]);
 
-  const fetchManuals = async (assignmentId) => {
-    if (!assignmentId) {
-      setManuals([]);
-      return;
-    }
-
+  const fetchManuals = async () => {
     setManualLoading(true);
     try {
-      const res = await axios.get(`${BASE_URL}/api/submissions/assignment/${assignmentId}/lab-manuals`);
-      setManuals(Array.isArray(res.data) ? res.data : []);
+      const res = await axios.get(`${BASE_URL}/api/submissions/batch/${batchId}/lab-manuals`);
+      const payload = res?.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : [];
+      setManuals(list);
     } catch (_) {
       setManuals([]);
     } finally {
@@ -141,8 +144,12 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
   };
 
   useEffect(() => {
-    fetchManuals(manualAssignmentId);
-  }, [manualAssignmentId]);
+    if (!batchId) {
+      setManuals([]);
+      return;
+    }
+    fetchManuals();
+  }, [batchId]);
 
   const sortedAssignments = useMemo(() => {
     const clone = [...assignments];
@@ -174,8 +181,8 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
   }, [assignments, sortBy]);
 
   const triggerManualPicker = () => {
-    if (!manualAssignmentId) {
-      setManualMessage("Please select an assignment first.");
+    if (!batchId) {
+      setManualMessage("Batch information is unavailable.");
       return;
     }
     manualInputRef.current?.click();
@@ -194,7 +201,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
       formData.append("file", file);
 
       await axios.post(
-        `${BASE_URL}/api/submissions/upload?assignmentId=${manualAssignmentId}&contentType=LAB_MANUAL`,
+        `${BASE_URL}/faculty/batches/${batchId}/lab-manual/upload`,
         formData,
         {
           withCredentials: true,
@@ -205,7 +212,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
       );
 
       setManualMessage(`Manual uploaded: ${file.name}`);
-      await fetchManuals(manualAssignmentId);
+      await fetchManuals();
     } catch (err) {
       setManualMessage(err?.response?.data?.message || "Manual upload failed.");
     } finally {
@@ -327,6 +334,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
           text: res?.data?.message || "Uploaded successfully.",
         },
       }));
+      await load();
       return true;
     } catch (err) {
       const msg = err?.response?.data?.message || "Upload failed.";
@@ -475,7 +483,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
             {canManageManual && (
               <button
                 type="button"
-                disabled={!manualAssignmentId || manualSaving}
+                disabled={!batchId || manualSaving}
                 onClick={triggerManualPicker}
                 className="ui-btn ui-btn-accent"
               >
@@ -606,7 +614,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
                                     <button
                                       type="button"
                                       disabled={isClosed(row) || !!uploadingById[row.assignmentId]}
-                                      onClick={() => openUploadModal(row)}
+                                      onClick={() => navigate(`/student/assignments/${row.assignmentId}`)}
                                       className="ui-btn ui-btn-accent min-h-9 px-3 py-1.5 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       {uploadingById[row.assignmentId] ? "Uploading..." : "Upload Assignment"}
@@ -668,7 +676,7 @@ const BatchDetails = ({ batchId, onBack, onAssess, canManageManual = false, isSt
                               <button
                                 type="button"
                                 disabled={isClosed(row) || !!uploadingById[row.assignmentId]}
-                                onClick={() => openUploadModal(row)}
+                                onClick={() => navigate(`/student/assignments/${row.assignmentId}`)}
                                 className="ui-btn ui-btn-accent col-span-2 min-h-10 px-3 py-2 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {uploadingById[row.assignmentId] ? "Uploading..." : "Upload Assignment"}

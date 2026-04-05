@@ -6,6 +6,7 @@ const ViewBatches = ({ onOpenBatchDetails }) => {
   const { loading, getMyBatches } = useBatch();
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const load = async () => {
     setError(null);
@@ -14,6 +15,8 @@ const ViewBatches = ({ onOpenBatchDetails }) => {
       setRows(data);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setIsInitialLoad(false);
     }
   };
 
@@ -46,7 +49,7 @@ const ViewBatches = ({ onOpenBatchDetails }) => {
         </div>
       )}
 
-      {loading && rows.length === 0 ? (
+      {(loading || isInitialLoad) && rows.length === 0 ? (
         <>
           <div className="hidden md:block bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
             <div className="p-6 space-y-3">
@@ -65,7 +68,7 @@ const ViewBatches = ({ onOpenBatchDetails }) => {
             ))}
           </div>
         </>
-      ) : rows.length === 0 && !loading && !error ? (
+      ) : rows.length === 0 && !loading && !isInitialLoad && !error ? (
         <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-14 text-center">
           <p className="text-[#F3F4F6] font-medium">No subject batches found.</p>
           <p className="text-gray-500 text-sm mt-2">Create one from the Create Batch tab.</p>

@@ -289,6 +289,69 @@ export const AssignmentProvider = ({ children }) => {
     }
   }, []);
 
+  const getMarksForAssignment = useCallback(async (assignmentId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await requestWithRetry(
+        () =>
+          axios.get(`${BASE_URL}/api/marks/assignment/${assignmentId}`, {
+            withCredentials: true,
+          }),
+        2
+      );
+      return res.data || [];
+    } catch (err) {
+      const msg = apiError(err, "Failed to fetch marks for assignment.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const finalizeMarks = useCallback(async (studentMarkId, payload) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await requestWithRetry(
+        () =>
+          axios.put(`${BASE_URL}/api/marks/${studentMarkId}/finalize`, payload, {
+            withCredentials: true,
+          }),
+        2
+      );
+      return res.data;
+    } catch (err) {
+      const msg = apiError(err, "Failed to finalize marks.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const getStudentBatchMarks = useCallback(async (batchId, _studentId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await requestWithRetry(
+        () =>
+          axios.get(`${BASE_URL}/api/marks/batch/${batchId}/my`, {
+            withCredentials: true,
+          }),
+        2
+      );
+      return res.data || [];
+    } catch (err) {
+      const msg = apiError(err, "Failed to fetch student marks.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       loading,
@@ -301,6 +364,9 @@ export const AssignmentProvider = ({ children }) => {
       updateSettingsAssignment,
       updateSettingsAssignmentDeadline,
       deleteSettingsAssignment,
+      getMarksForAssignment,
+      finalizeMarks,
+      getStudentBatchMarks,
     }),
     [
       loading,
@@ -313,6 +379,9 @@ export const AssignmentProvider = ({ children }) => {
       updateSettingsAssignment,
       updateSettingsAssignmentDeadline,
       deleteSettingsAssignment,
+      getMarksForAssignment,
+      finalizeMarks,
+      getStudentBatchMarks,
     ]
   );
 

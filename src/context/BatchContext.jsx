@@ -76,6 +76,67 @@ export const BatchProvider = ({ children }) => {
     }
   };
 
+  const uploadLabManual = async (assignmentId, file) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await requestWithRetry(() =>
+        axios.post(
+          `${BASE_URL}/api/submissions/upload?assignmentId=${assignmentId}&contentType=LAB_MANUAL`,
+          formData,
+          {
+            withCredentials: true,
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        )
+      );
+
+      return res.data;
+    } catch (err) {
+      const msg = apiError(err, "Failed to upload lab manual.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const uploadBatchLabManual = async (batchId, file) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await requestWithRetry(() =>
+        axios.post(
+          `${BASE_URL}/faculty/batches/${batchId}/lab-manual/upload`,
+          formData,
+          {
+            withCredentials: true,
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        )
+      );
+
+      return res.data;
+    } catch (err) {
+      const msg = apiError(err, "Failed to upload batch lab manual.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   const getMyBatches = async () => {
     setLoading(true);
     setError(null);
@@ -197,6 +258,8 @@ export const BatchProvider = ({ children }) => {
         error,
         getBatchOptions,
         createBatch,
+        uploadLabManual,
+        uploadBatchLabManual,
         getMyBatches,
         getBatchDetails,
         getStudentBatchDetails,

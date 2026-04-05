@@ -25,11 +25,24 @@ const navItems = [
 
 const StudentSidebar = ({ activePage, onNavigate, mobileOpen = false, onMobileClose }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);  // ← ADD: Track logout state
   const { student, logout } = useStudentAuth();
 
   const handleLogout = async () => {
-    await logout();
-    window.location.href = "/student/login";
+    try {
+      setLoggingOut(true);
+      await logout();
+      // Redirect safely after logout
+      window.history.replaceState({}, "", "/student/login");
+      window.location.href = "/student/login";
+    } catch (err) {
+      console.error("Logout failed:", err);
+      // Still redirect even if logout fails
+      window.history.replaceState({}, "", "/student/login");
+      window.location.href = "/student/login";
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -106,10 +119,11 @@ const StudentSidebar = ({ activePage, onNavigate, mobileOpen = false, onMobileCl
             onMobileClose?.();
             await handleLogout();
           }}
-          className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 hover:border hover:border-[#F87171] hover:bg-transparent hover:text-[#F87171] transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
+          disabled={loggingOut}
+          className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${collapsed ? "justify-center" : ""} ${loggingOut ? "opacity-50 cursor-not-allowed" : "text-gray-400 hover:border hover:border-[#F87171] hover:bg-transparent hover:text-[#F87171]"}`}
         >
-          <LogOut size={16} className="shrink-0" />
-          {!collapsed && <span>Logout</span>}
+          <LogOut size={16} className={`shrink-0 ${loggingOut ? "animate-spin" : ""}`} />
+          {!collapsed && <span>{loggingOut ? "Logging out..." : "Logout"}</span>}
         </button>
       </div>
       </aside>

@@ -21,13 +21,14 @@ const isTransient = (err) => {
   return status >= 500;
 };
 
-const AuthContext = createContext(null);
+const AuthContextValue = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [faculty, setFaculty]         = useState(null);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState(null);
   const [initializing, setInitializing] = useState(true); // ← NEW
+  const [csrfToken, setCsrfToken]     = useState(null);  // ← NEW: CSRF token storage
 
   const register = async (name, email, password) => {
     setLoading(true);
@@ -71,6 +72,12 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
+      // Extract CSRF token from response headers if present
+      const token = res.headers['x-csrf-token'];
+      if (token) {
+        setCsrfToken(token);
+      }
+
       await fetchProfile();
       return res.data;
     } catch (err) {
@@ -93,6 +100,7 @@ export const AuthProvider = ({ children }) => {
     } catch (_) {
     } finally {
       setFaculty(null);
+      setCsrfToken(null);  // ← Clear CSRF token on logout
       setLoading(false);
     }
   };
@@ -138,27 +146,30 @@ export const AuthProvider = ({ children }) => {
 
   const isAdmin    = () => faculty?.isAdmin === true;
   const isLoggedIn = () => faculty !== null;
+  const getCsrfToken = () => csrfToken;  // ← ADD THIS
 
   return (
-    <AuthContext.Provider value={{
+    <AuthContextValue.Provider value={{
       faculty,
       loading,
       error,
       initializing, // ← exposed
+      csrfToken,    // ← ADD THIS
       register,
       login,
       logout,
       isAdmin,
       isLoggedIn,
+      getCsrfToken, // ← ADD THIS
       fetchProfile,
     }}>
       {children}
-    </AuthContext.Provider>
+    </AuthContextValue.Provider>
   );
 };
 
 export const useAuth = () => {
-  const ctx = useContext(AuthContext);
+  const ctx = useContext(AuthContextValue);
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
 };

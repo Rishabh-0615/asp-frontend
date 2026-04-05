@@ -82,7 +82,7 @@ const AuthInput = ({ icon: Icon, type = "text", placeholder, value, onChange, au
 /* ===============================
    Auth Page (Login + Register)
 ================================ */
-const Auth = ({ onLoginSuccess }) => {
+const Auth = ({ onLoginSuccess, onForgotPassword }) => {
     const { login, register, loading, error } = useAuth();
 
     const [tab, setTab] = useState("login"); // "login" | "register"
@@ -260,6 +260,29 @@ const Auth = ({ onLoginSuccess }) => {
                                         {loading ? "Signing in..." : "Sign In"}
                                     </button>
                                 </form>
+                            )}
+
+                            {/* FORGOT PASSWORD & STUDENT LOGIN LINKS (for login tab only) */}
+                            {tab === "login" && (
+                                <div className="mt-5 pt-4 border-t border-gray-800 space-y-2">
+                                    <div className="text-center">
+                                        <button
+                                            type="button"
+                                            onClick={onForgotPassword}
+                                            className="text-sm text-gray-500 hover:text-[#00C2FF] transition-colors"
+                                        >
+                                            Forgot Password?
+                                        </button>
+                                    </div>
+                                    <div className="text-center">
+                                        <a
+                                            href="/student/login"
+                                            className="text-sm text-gray-500 hover:text-[#00C2FF] transition-colors"
+                                        >
+                                            Student login →
+                                        </a>
+                                    </div>
+                                </div>
                             )}
 
                             {/* REGISTER FORM */}

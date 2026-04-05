@@ -16,6 +16,8 @@ import Sidebar from "../components/layout/Sidebar";
 import { useAdmin } from "../context/AdminContext";
 import { useAuth } from "../context/AuthContext";
 import { useAssignment } from "../context/AssignmentContext";
+import { safeExtractParam, isValidUUID } from "../utils/validation";
+import { canAccessPage as checkPageAccess } from "../utils/routeGuards";
 import CreateStudent from "./admin/CreateStudent";
 import StudentBulkUpload from "./admin/StudentBulkUpload";
 import AllFaculties from "./admin/AllFaculties";
@@ -27,6 +29,7 @@ import AssignmentList from "./admin/AssignmentList";
 import AssignmentAssessment from "./admin/AssignmentAssessment";
 import SettingsManagement from "./admin/SettingsManagement";
 import BatchDetails from "./admin/BatchDetails";
+import MarksEvaluation from "./admin/MarksEvaluation";
 
 const hasAdminAccess = (faculty) => {
   const role = String(faculty?.role || "").toUpperCase();
@@ -47,7 +50,9 @@ const FACULTY_PAGES = new Set([
   "create-assignment",
   "assignment-list",
   "assignment-assessment",
+  "marks-evaluation",
   "settings",
+  "profile",
 ]);
 
 const ADMIN_ONLY_PAGES = new Set([
@@ -94,7 +99,7 @@ const StatCard = ({ icon: Icon, label, value, highlight, onClick }) => (
 /* ────────────────────────────────────────────── */
 /* Pending Faculty View                           */
 /* ────────────────────────────────────────────── */
-const PendingFacultiesView = () => {
+export const PendingFacultiesView = () => {
   const { pendingFaculties, getPendingFaculties, approveFaculty, revokeFaculty, loading } = useAdmin();
 
   useEffect(() => { getPendingFaculties(); }, []);
@@ -176,9 +181,30 @@ const PendingFacultiesView = () => {
 /* ────────────────────────────────────────────── */
 /* Dashboard Home                                 */
 /* ────────────────────────────────────────────── */
-const DashboardHome = ({ onNavigate, isAdmin }) => {
+export const DashboardHome = () => {
   const { pendingFaculties, getPendingFaculties, getAllFaculties, getAllStudents } = useAdmin();
   const { faculty } = useAuth();
+  const isAdmin = hasAdminAccess(faculty);
+  const navigate = useNavigate();
+
+  const onNavigate = (value) => {
+    const page = typeof value === "string" ? value : value?.page;
+    if (page === "assignment-list" && value?.filter) {
+      navigate(`/faculty/assignments?filter=${value.filter}`);
+    } else {
+      const routes = {
+        "pending-faculties": "/faculty/pending-faculties",
+        "create-student": "/faculty/create-student",
+        "bulk-upload": "/faculty/bulk-upload",
+        "create-batch": "/faculty/batches/create",
+        "view-batches": "/faculty/batches",
+        "create-assignment": "/faculty/assignments/create",
+        "assignment-list": "/faculty/assignments",
+      };
+      navigate(routes[page] || `/faculty/${page}`);
+    }
+  };
+
   const { getFacultyAssignments, getAssignmentAssessment } = useAssignment();
   const [adminDashboardMode, setAdminDashboardMode] = useState("admin");
   const [stats, setStats] = useState({ activeFaculty: 0, totalStudents: 0, totalUsers: 0 });
@@ -233,7 +259,7 @@ const DashboardHome = ({ onNavigate, isAdmin }) => {
 
       const settled = await Promise.allSettled(
         needsAssessment.map((row) =>
-          getAssignmentAssessment(row.assignmentId, { backgroundRefresh: true })
+          getAssignmentAssessment(row.assignmentId, { backgroundRefresh: false })
             .then((assessment) => ({
               assignmentId: row.assignmentId,
               unreviewedCount:
@@ -269,7 +295,7 @@ const DashboardHome = ({ onNavigate, isAdmin }) => {
 
       try {
         const assignments = assignmentsOverride || (await getFacultyAssignments(undefined, {
-          backgroundRefresh: true,
+          backgroundRefresh: false, // Turned off aggressive refresh
           onBackgroundData: (freshAssignments) => {
             if (disposed) {
               return;
@@ -508,152 +534,79 @@ const DashboardHome = ({ onNavigate, isAdmin }) => {
   );
 };
 
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
+
 /* ────────────────────────────────────────────── */
 /* Main Dashboard                                 */
 /* ────────────────────────────────────────────── */
 const Dashboard = () => {
-  const [activePage, setActivePage] = useState("dashboard");
-  const [assignmentListPresetFilter, setAssignmentListPresetFilter] = useState("all");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [assessmentAssignmentId, setAssessmentAssignmentId] = useState(null);
-  const [assessmentBackTarget, setAssessmentBackTarget] = useState({ page: "assignment-list", batchId: null });
-  const [batchDetailsBatchId, setBatchDetailsBatchId] = useState(null);
   const { faculty } = useAuth();
   const isAdmin = hasAdminAccess(faculty);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const canAccessPage = (page) => {
-    if (isAdmin) {
-      return FACULTY_PAGES.has(page) || ADMIN_ONLY_PAGES.has(page);
-    }
-    return FACULTY_PAGES.has(page);
+  const activePageMapping = () => {
+    const path = location.pathname;
+    if (path === "/faculty/dashboard") return "dashboard";
+    if (path === "/faculty/pending-faculties") return "pending-faculties";
+    if (path === "/faculty/all-faculties") return "all-faculties";
+    if (path === "/faculty/all-students") return "all-students";
+    if (path === "/faculty/create-student") return "create-student";
+    if (path === "/faculty/bulk-upload") return "bulk-upload";
+    if (path === "/faculty/batches/create") return "create-batch";
+    if (path === "/faculty/batches") return "view-batches";
+    if (path.includes("/batches/") && !path.includes("/faculty/batches")) return "batch-details"; // actually in App.jsx we handle this
+    if (path === "/faculty/assignments/create") return "create-assignment";
+    if (path === "/faculty/assignments") return "assignment-list";
+    if (path.includes("/assessment")) return "assignment-assessment";
+    if (path.includes("/marks")) return "marks-evaluation";
+    if (path === "/faculty/settings") return "settings";
+    if (path === "/faculty/profile") return "profile";
+    return "dashboard";
   };
+  
+  const activePage = activePageMapping();
 
   const navigateToPage = (value) => {
     const page = typeof value === "string" ? value : value?.page;
-    const presetFilter = typeof value === "object" ? value?.filter : undefined;
-
-    if (!canAccessPage(page)) {
-      setActivePage("dashboard");
-      return;
+    const routes = {
+      "dashboard": "/faculty/dashboard",
+      "pending-faculties": "/faculty/pending-faculties",
+      "all-faculties": "/faculty/all-faculties",
+      "all-students": "/faculty/all-students",
+      "create-student": "/faculty/create-student",
+      "bulk-upload": "/faculty/bulk-upload",
+      "create-batch": "/faculty/batches/create",
+      "view-batches": "/faculty/batches",
+      "create-assignment": "/faculty/assignments/create",
+      "assignment-list": "/faculty/assignments",
+      "settings": "/faculty/settings",
+      "profile": "/faculty/profile",
+    };
+    
+    if (routes[page]) {
+      navigate(routes[page]);
     }
-
-    if (page === "assignment-list") {
-      setAssignmentListPresetFilter(presetFilter || "all");
-    }
-
-    setActivePage(page);
     setMobileSidebarOpen(false);
   };
-
-  useEffect(() => {
-    const syncFromPath = () => {
-      const batchMatch = window.location.pathname.match(/^\/batches\/([^/]+)\/?$/i);
-      if (batchMatch) {
-        setBatchDetailsBatchId(batchMatch[1]);
-        setActivePage("batch-details");
-        return;
-      }
-
-      const match = window.location.pathname.match(/^\/faculty\/assignments\/([^/]+)\/assessment\/?$/i);
-      if (match) {
-        setAssessmentAssignmentId(match[1]);
-        setAssessmentBackTarget({ page: "assignment-list", batchId: null });
-        setActivePage("assignment-assessment");
-        return;
-      }
-
-      setActivePage((prev) => (prev === "assignment-assessment" ? "assignment-list" : prev));
-    };
-
-    syncFromPath();
-    window.addEventListener("popstate", syncFromPath);
-    return () => window.removeEventListener("popstate", syncFromPath);
-  }, []);
-
-  const openAssessment = (assignmentId, options = {}) => {
-    if (!assignmentId) {
-      return;
-    }
-
-    setAssessmentBackTarget({
-      page: options?.fromPage || activePage || "assignment-list",
-      batchId: options?.batchId || batchDetailsBatchId || null,
-    });
-    setAssessmentAssignmentId(assignmentId);
-    setActivePage("assignment-assessment");
-    window.history.pushState({}, "", `/faculty/assignments/${assignmentId}/assessment`);
-  };
-
-  const closeAssessment = () => {
-    if (assessmentBackTarget?.page === "batch-details" && assessmentBackTarget?.batchId) {
-      setBatchDetailsBatchId(assessmentBackTarget.batchId);
-      setActivePage("batch-details");
-      window.history.pushState({}, "", `/batches/${assessmentBackTarget.batchId}`);
-      return;
-    }
-
-    setActivePage("assignment-list");
-    window.history.pushState({}, "", "/faculty/assignments");
-  };
-
-  const openBatchDetails = (batchId) => {
-    if (!batchId) {
-      return;
-    }
-
-    setBatchDetailsBatchId(batchId);
-    setActivePage("batch-details");
-    window.history.pushState({}, "", `/batches/${batchId}`);
-  };
-
-  const closeBatchDetails = () => {
-    setActivePage("view-batches");
-    window.history.pushState({}, "", "/faculty/batches");
-  };
-
-  useEffect(() => {
-    if (!isAdmin && ADMIN_ONLY_PAGES.has(activePage)) {
-      setActivePage("dashboard");
-    }
-  }, [activePage, isAdmin]);
 
   const pageTitles = {
     "dashboard":          "Dashboard",
     "pending-faculties":  "Pending Approvals",
-    "all-faculties":      "All Faculties",       // ← added
-    "all-students":       "All Students",       // ← added
+    "all-faculties":      "All Faculties",
+    "all-students":       "All Students",
     "create-batch":       "Create Batch",
     "view-batches":       "View Batches",
     "batch-details":      "Batch Details",
     "create-assignment":  "Create Assignment",
     "assignment-list":    "Assignment List",
     "assignment-assessment": "Evaluation",
+    "marks-evaluation":   "Evaluate Marks",
     "create-student":     "Create Student",
     "bulk-upload":        "Bulk Upload Students",
     "settings":           "Settings",
-  };
-
-  const renderContent = () => {
-    if (!canAccessPage(activePage)) {
-      return <DashboardHome onNavigate={navigateToPage} isAdmin={isAdmin} />;
-    }
-
-    switch (activePage) {
-      case "dashboard":         return <DashboardHome onNavigate={navigateToPage} isAdmin={isAdmin} />;
-      case "pending-faculties": return <PendingFacultiesView />;
-      case "all-faculties":     return <AllFaculties />;      // ← added
-      case "all-students":      return <AllStudents />;       // ← added
-      case "create-batch":      return <CreateBatch />;
-      case "view-batches":      return <ViewBatches onOpenBatchDetails={openBatchDetails} />;
-      case "batch-details":     return <BatchDetails batchId={batchDetailsBatchId} onBack={closeBatchDetails} onAssess={openAssessment} canManageManual />;
-      case "create-assignment": return <CreateAssignment onNavigate={navigateToPage} />;
-      case "assignment-list":   return <AssignmentList onAssess={openAssessment} initialFilter={assignmentListPresetFilter} />;
-      case "assignment-assessment": return <AssignmentAssessment assignmentId={assessmentAssignmentId} onBack={closeAssessment} />;
-      case "create-student":    return <CreateStudent />;
-      case "bulk-upload":       return <StudentBulkUpload />;
-      case "settings":          return <SettingsManagement />;
-      default:                  return null;
-    }
+    "profile":            "Profile",
   };
 
   return (
@@ -687,7 +640,7 @@ const Dashboard = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">{renderContent()}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8"><Outlet /></main>
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ const STUDENT_ALLOWED_UPLOAD_TYPES = [
   'zip', 'rar', '7z'
 ];
 
-const StudentAssignments = () => {
+const StudentAssignments = ({ onOpenAssignmentDetails, onOpenMarksView }) => {
   const { getStudentAssignments, loading } = useAssignment();
   const { student } = useStudentAuth();
   const [rows, setRows] = useState([]);
@@ -63,10 +63,6 @@ const StudentAssignments = () => {
       setRows(assignmentRows || []);
       const latestByAssignment = groupLatestSubmissions(submissionRows?.data || []);
       setSubmissionsByAssignment(latestByAssignment);
-
-      Object.values(latestByAssignment).forEach((submission) => {
-        prefetchSubmissionPreview(submission);
-      });
     } catch (err) {
       setRows([]);
       setSubmissionsByAssignment({});
@@ -154,7 +150,7 @@ const StudentAssignments = () => {
         ...prev,
         [assignmentId]: res.data,
       }));
-      prefetchSubmissionPreview(res.data);
+      // prefetchSubmissionPreview(res.data); // Removed auto-prefetch
       return res.data;
     } catch (err) {
       const msg = err?.response?.data?.message || "Upload failed.";
@@ -221,6 +217,14 @@ const StudentAssignments = () => {
               </option>
             ))}
           </select>
+
+          <button
+            onClick={() => onOpenMarksView?.()}
+            className="ui-btn ui-btn-accent"
+            title="View your marks"
+          >
+            View Marks
+          </button>
 
           <button
             onClick={load}
@@ -328,7 +332,7 @@ const StudentAssignments = () => {
                 <button
                   type="button"
                   disabled={isClosed(row) || !!uploadingById[row.assignmentId] || (!!getLatestSubmission(row.assignmentId) && !row.allowMultipleSubmissions)}
-                  onClick={() => openUploadModal(row)}
+                  onClick={() => onOpenAssignmentDetails?.(row.assignmentId)}
                   className="inline-flex items-center gap-2 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 px-3 py-1.5 text-xs font-medium text-[#9fdaed] hover:bg-[#00C2FF]/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Upload size={13} />
@@ -336,9 +340,7 @@ const StudentAssignments = () => {
                     ? "Uploading..."
                     : getLatestSubmission(row.assignmentId) && !row.allowMultipleSubmissions
                       ? "Uploaded"
-                      : getLatestSubmission(row.assignmentId)
-                        ? "Upload Again"
-                        : "Upload Assignment"}
+                      : "View Assignment"}
                 </button>
               </div>
 
@@ -372,7 +374,6 @@ const StudentAssignments = () => {
               [submission.assignmentId]: submission,
             }));
           }
-          prefetchSubmissionPreview(submission);
         }}
       />
 

@@ -46,6 +46,7 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
   const [assessmentMeta, setAssessmentMeta] = useState({});
   const [assessmentLoading, setAssessmentLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const loadBatches = async () => {
     try {
@@ -68,7 +69,7 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
     setAssessmentLoading(true);
     const settled = await Promise.allSettled(
       needsAssessment.map((row) =>
-        getAssignmentAssessment(row.assignmentId, { backgroundRefresh: true }).then((assessment) => ({
+        getAssignmentAssessment(row.assignmentId, { backgroundRefresh: false }).then((assessment) => ({
           assignmentId: row.assignmentId,
           highAiCount: (assessment?.students || []).filter(
             (student) => student?.submitted && Number(student?.aiGeneratedPercent ?? 0) >= HIGH_AI_THRESHOLD
@@ -104,14 +105,14 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
         backgroundRefresh: !forceRefresh,
         onBackgroundData: (freshData) => {
           setRows(freshData || []);
-          preloadAssessmentMeta(freshData || []);
         },
       });
       setRows(data || []);
-      preloadAssessmentMeta(data || []);
     } catch (err) {
       setError(err.message);
       // Keep previous rows visible when refresh fails.
+    } finally {
+      setIsInitialLoad(false);
     }
   };
 
@@ -123,6 +124,13 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
   useEffect(() => {
     setCommandFilter(initialFilter || "all");
   }, [initialFilter]);
+
+  // Lazy-load the assessment metadata ONLY if the user selects a filter that requires it
+  useEffect(() => {
+    if (commandFilter === "high-ai" || commandFilter === "unreviewed") {
+      preloadAssessmentMeta(rows);
+    }
+  }, [commandFilter, rows]);
 
   const onFilterChange = async (value) => {
     setBatchId(value);
@@ -218,7 +226,7 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
         </div>
       )}
 
-      {loading && rows.length === 0 ? (
+      {(loading || isInitialLoad) && rows.length === 0 ? (
         <>
           <div className="hidden md:block bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
             <div className="p-6 space-y-3">
@@ -237,7 +245,7 @@ const AssignmentList = ({ onAssess, initialFilter = "all" }) => {
             ))}
           </div>
         </>
-      ) : filteredRows.length === 0 && !loading && !error ? (
+      ) : filteredRows.length === 0 && !loading && !isInitialLoad && !error ? (
         <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-14 text-center">
           <p className="text-[#F3F4F6] font-medium">No assignments found.</p>
           <p className="text-gray-500 text-sm mt-2">Try changing the filters or create one from the Create Assignment tab.</p>

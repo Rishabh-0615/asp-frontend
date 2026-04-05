@@ -34,6 +34,7 @@ export const StudentAuthProvider = ({ children }) => {
   const [myBatches, setMyBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [csrfToken, setCsrfToken] = useState(null);  // ← NEW: CSRF token storage
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -104,6 +105,12 @@ export const StudentAuthProvider = ({ children }) => {
         throw new Error("Login failed");
       }
 
+      // Extract CSRF token from response headers if present
+      const token = response.headers['x-csrf-token'];
+      if (token) {
+        setCsrfToken(token);
+      }
+
       if (response.data.success && response.data?.data?.activationRequired) {
         return response.data;
       }
@@ -126,6 +133,7 @@ export const StudentAuthProvider = ({ children }) => {
       await axios.post(`${BASE_URL}/student/logout`, {}, { withCredentials: true });
       setStudent(null);
       setMyBatches([]);
+      setCsrfToken(null);  // ← Clear CSRF token on logout
       setError(null);
     } catch (err) {
       console.error("Logout error:", err);
@@ -133,6 +141,8 @@ export const StudentAuthProvider = ({ children }) => {
   }, []);
 
   const isLoggedIn = useCallback(() => student !== null, [student]);
+
+  const getCsrfToken = useCallback(() => csrfToken, [csrfToken]);
 
   const activateAccount = useCallback(async (email, tempPassword, newPassword) => {
     setError(null);
@@ -166,24 +176,28 @@ export const StudentAuthProvider = ({ children }) => {
       loading,
       error,
       myBatches,
+      csrfToken,
       login,
       logout,
       activateAccount,
       fetchProfile,
       fetchMyBatches,
       isLoggedIn,
+      getCsrfToken,
     }),
     [
       student,
       loading,
       error,
       myBatches,
+      csrfToken,
       login,
       logout,
       activateAccount,
       fetchProfile,
       fetchMyBatches,
       isLoggedIn,
+      getCsrfToken,
     ]
   );
 

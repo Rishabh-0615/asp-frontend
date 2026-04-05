@@ -171,7 +171,7 @@ const pdfDownloadEndpointFor = (submissionId, fileUrl, fileName) => {
   return `${BASE_URL}/api/submissions/file/download?${params.toString()}`;
 };
 
-const AssignmentAssessment = ({ assignmentId, onBack }) => {
+const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatchId = null }) => {
   const { loading, getAssignmentAssessment } = useAssignment();
 
   const [assessment, setAssessment] = useState(null);
@@ -456,6 +456,26 @@ const AssignmentAssessment = ({ assignmentId, onBack }) => {
             <Smile size={15} className="text-emerald-300" />
             Faculty review workspace: track submissions, open files, and review AI score quickly.
           </p>
+
+          <div className="mt-3 inline-flex rounded-xl border border-gray-700 bg-[#111317] p-1">
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#00C2FF] text-[#0E0F11]"
+            >
+              View Submission
+            </button>
+            <button
+              type="button"
+              onClick={() => onEvaluateMarks?.(assignmentId, {
+                fromPage: "assignment-assessment",
+                assignmentId,
+                batchId: backBatchId,
+              })}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:text-[#F3F4F6] hover:bg-[#2A2F36] transition-colors"
+            >
+              Evaluate Marks
+            </button>
+          </div>
         </div>
 
         <button

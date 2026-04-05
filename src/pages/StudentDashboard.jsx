@@ -3,8 +3,11 @@ import { Layers3, FileText, Clock, UserCircle2, GraduationCap, Mail, BookOpen, M
 import StudentSidebar from "../components/layout/StudentSidebar";
 import { useStudentAuth } from "../context/StudentAuthContext";
 import { useAssignment } from "../context/AssignmentContext";
+import { isValidUUID } from "../utils/validation";
 import StudentAssignments from "./StudentAssignments";
+import AssignmentDetails from "./AssignmentDetails";
 import BatchDetails from "./admin/BatchDetails";
+import StudentMarksView from "./StudentMarksView";
 
 const yearLabels = {
   2: "Second Year",
@@ -26,81 +29,116 @@ const StatCard = ({ icon: Icon, label, value, highlight }) => (
   </div>
 );
 
-const StudentOverview = ({ student, myBatches, onNavigate, onOpenBatchDetails, assignmentCount, pendingCount }) => (
-  <div>
-    <div className="mb-10">
-      <h2 className="text-2xl font-semibold text-[#F3F4F6]">Welcome back, {student?.name?.split(" ")[0] || "Student"}.</h2>
-      <p className="text-sm text-gray-500 mt-2">Here is your academic overview.</p>
-    </div>
+export const StudentOverview = () => {
+  const { student, myBatches } = useStudentAuth();
+  const { getStudentAssignments } = useAssignment();
+  const navigate = useNavigate();
+  const [assignmentCount, setAssignmentCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
 
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
-      <StatCard icon={Layers3} label="My batches" value={myBatches.length} highlight={myBatches.length > 0} />
-      <StatCard icon={FileText} label="Assignments" value={assignmentCount} highlight={assignmentCount > 0} />
-      <StatCard icon={Clock} label="Pending" value={pendingCount} highlight={pendingCount > 0} />
-      <StatCard icon={GraduationCap} label="Year" value={yearLabels[student?.year] || student?.year || "-"} />
-    </div>
+  useEffect(() => {
+    getStudentAssignments().then(rows => {
+      setAssignmentCount(rows.length);
+      const now = new Date();
+      const pending = rows.filter((row) => {
+        const deadline = row?.deadline ? new Date(row.deadline) : null;
+        const isOpen = row?.isOpen !== false;
+        const closed = row?.closed === true;
+        return isOpen && !closed && (!deadline || deadline >= now);
+      }).length;
+      setPendingCount(pending);
+    }).catch(() => {});
+  }, [getStudentAssignments]);
 
-    <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6">
-      <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-700 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-[#F3F4F6]">Recent Batches</h3>
-            <p className="text-sm text-gray-500 mt-1">Batches where you are currently mapped.</p>
+  const onNavigate = (path) => navigate(`/student/${path}`);
+  const onOpenBatchDetails = (id) => navigate(`/student/batches/${id}`);
+
+  return (
+    <div>
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-[#F3F4F6]">Welcome back, {student?.name?.split(" ")[0] || "Student"}.</h2>
+        <p className="text-sm text-gray-500 mt-2">Here is your academic overview.</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
+        <StatCard icon={Layers3} label="My batches" value={myBatches.length} highlight={myBatches.length > 0} />
+        <StatCard icon={FileText} label="Assignments" value={assignmentCount} highlight={assignmentCount > 0} />
+        <StatCard icon={Clock} label="Pending" value={pendingCount} highlight={pendingCount > 0} />
+        <StatCard icon={GraduationCap} label="Year" value={yearLabels[student?.year] || student?.year || "-"} />
+      </div>
+
+      <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6">
+        <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-700 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-[#F3F4F6]">Recent Batches</h3>
+              <p className="text-sm text-gray-500 mt-1">Batches where you are currently mapped.</p>
+            </div>
+            <button onClick={() => onNavigate("batches")} className="text-sm text-[#00C2FF] hover:text-[#7adfff] transition-colors">
+              View all
+            </button>
           </div>
-          <button onClick={() => onNavigate("batches")} className="text-sm text-[#00C2FF] hover:text-[#7adfff] transition-colors">
-            View all
-          </button>
-        </div>
 
-        {myBatches.length === 0 ? (
-          <div className="p-10 text-center text-sm text-gray-500">No faculty batch has mapped you yet.</div>
-        ) : (
-          <div className="divide-y divide-gray-700">
-            {myBatches.slice(0, 4).map((batch) => (
-              <div key={batch.batchId} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-[#2A2F36] transition-colors">
-                <div>
-                  <p className="text-[#F3F4F6] font-medium">{batch.subjectName}</p>
-                  <p className="text-sm text-gray-500 mt-1">{batch.yearLabel} • {batch.division} • {batch.baseBatch}</p>
+          {myBatches.length === 0 ? (
+            <div className="p-10 text-center text-sm text-gray-500">No faculty batch has mapped you yet.</div>
+          ) : (
+            <div className="divide-y divide-gray-700">
+              {myBatches.slice(0, 4).map((batch) => (
+                <div key={batch.batchId} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-[#2A2F36] transition-colors">
+                  <div>
+                    <p className="text-[#F3F4F6] font-medium">{batch.subjectName}</p>
+                    <p className="text-sm text-gray-500 mt-1">{batch.yearLabel} • {batch.division} • {batch.baseBatch}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenBatchDetails(batch.batchId)}
+                    className="px-3 py-1.5 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs font-medium hover:bg-[#00C2FF]/20"
+                  >
+                    Batch Details
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onOpenBatchDetails?.(batch.batchId)}
-                  className="px-3 py-1.5 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs font-medium hover:bg-[#00C2FF]/20"
-                >
-                  Batch Details
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-      <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-6">
-        <h3 className="text-lg font-semibold text-[#F3F4F6] mb-5">Current Profile</h3>
-        <div className="space-y-4 text-sm">
-          <div>
-            <p className="text-gray-500 mb-1">Roll Number</p>
-            <p className="text-[#F3F4F6] font-medium">{student?.rollNo}</p>
-          </div>
-          <div>
-            <p className="text-gray-500 mb-1">Email</p>
-            <p className="text-[#F3F4F6] font-medium break-all">{student?.email}</p>
-          </div>
-          <div>
-            <p className="text-gray-500 mb-1">Department / Division</p>
-            <p className="text-[#F3F4F6] font-medium">{student?.department} • {student?.division}</p>
-          </div>
-          <div>
-            <p className="text-gray-500 mb-1">Base Batch</p>
-            <p className="text-[#F3F4F6] font-medium">{student?.baseBatch}</p>
+        <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-[#F3F4F6] mb-5">Current Profile</h3>
+          <div className="space-y-4 text-sm">
+            <div>
+              <p className="text-gray-500 mb-1">Roll Number</p>
+              <p className="text-[#F3F4F6] font-medium">{student?.rollNo}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 mb-1">Email</p>
+              <p className="text-[#F3F4F6] font-medium break-all">{student?.email}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 mb-1">Department / Division</p>
+              <p className="text-[#F3F4F6] font-medium">{student?.department} • {student?.division}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 mb-1">Base Batch</p>
+              <p className="text-[#F3F4F6] font-medium">{student?.baseBatch}</p>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
-const StudentBatchesView = ({ myBatches, loading, error, onRefresh, onOpenBatchDetails }) => (
+export const StudentBatchesView = () => {
+  const { myBatches, loading, fetchMyBatches } = useStudentAuth();
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+  
+  const onRefresh = async () => {
+    try { await fetchMyBatches(); setError(null); } catch (e) { setError(e.message); }
+  };
+  const onOpenBatchDetails = (id) => navigate(`/student/batches/${id}`);
+
+  return (
   <div>
     <div className="mb-8">
       <h2 className="text-xl font-semibold text-[#F3F4F6]">My Batches</h2>
@@ -181,9 +219,10 @@ const StudentBatchesView = ({ myBatches, loading, error, onRefresh, onOpenBatchD
       </>
     )}
   </div>
-);
+)};
 
-const StudentProfileView = ({ student }) => {
+export const StudentProfileView = () => {
+  const { student } = useStudentAuth();
   const profileItems = [
     { icon: UserCircle2, label: "Full Name", value: student?.name },
     { icon: Mail, label: "Email", value: student?.email },
@@ -217,64 +256,24 @@ const StudentProfileView = ({ student }) => {
   );
 };
 
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
+
 const StudentDashboard = () => {
-  const { student, myBatches, loading, fetchMyBatches } = useStudentAuth();
-  const { getStudentAssignments } = useAssignment();
-  const [activePage, setActivePage] = useState("overview");
-  const [selectedBatchId, setSelectedBatchId] = useState(null);
+  const { student } = useStudentAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [batchError, setBatchError] = useState(null);
-  const [assignmentCount, setAssignmentCount] = useState(0);
-  const [pendingCount, setPendingCount] = useState(0);
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const refreshOverviewData = useCallback(async () => {
-    if (!student) {
-      return;
-    }
-
-    try {
-      await fetchMyBatches();
-      setBatchError(null);
-    } catch (err) {
-      setBatchError(err.message);
-    }
-
-    try {
-      const rows = await getStudentAssignments();
-      setAssignmentCount(rows.length);
-
-      const now = new Date();
-      const pending = rows.filter((row) => {
-        const deadline = row?.deadline ? new Date(row.deadline) : null;
-        const isOpen = row?.isOpen !== false;
-        const closed = row?.closed === true;
-        return isOpen && !closed && (!deadline || deadline >= now);
-      }).length;
-
-      setPendingCount(pending);
-    } catch (_) {
-      // Keep previous values on transient failure; avoid flickering to 0.
-    }
-  }, [student, fetchMyBatches, getStudentAssignments]);
-
-  useEffect(() => {
-    if (!student) {
-      return;
-    }
-
-    if (activePage === "overview") {
-      refreshOverviewData();
-    }
-  }, [student, activePage, refreshOverviewData]);
-
-  const openBatchDetails = (batchId) => {
-    if (!batchId) {
-      return;
-    }
-
-    setSelectedBatchId(batchId);
-    setActivePage("batch-details");
+  const activePageMapping = () => {
+    const path = location.pathname;
+    if (path === "/student/dashboard") return "overview";
+    if (path === "/student/batches") return "batches";
+    if (path === "/student/assignments") return "assignments";
+    if (path.includes("/student/profile")) return "profile";
+    if (path.includes("/marks")) return "marks";
+    return "overview";
   };
+  const activePage = activePageMapping();
 
   const pageTitles = useMemo(
     () => ({
@@ -282,10 +281,22 @@ const StudentDashboard = () => {
       batches: "My Batches",
       "batch-details": "Batch Details",
       assignments: "Assignments",
+      marks: "My Marks",
       profile: "My Profile",
     }),
     []
   );
+
+  const navigateToPage = (page) => {
+    const routes = {
+      "overview": "/student/dashboard",
+      "batches": "/student/batches",
+      "assignments": "/student/assignments",
+      "profile": "/student/profile",
+    };
+    if (routes[page]) navigate(routes[page]);
+    setMobileSidebarOpen(false);
+  };
 
   if (!student) {
     return (
@@ -295,37 +306,11 @@ const StudentDashboard = () => {
     );
   }
 
-  const renderContent = () => {
-    switch (activePage) {
-      case "overview":
-        return (
-          <StudentOverview
-            student={student}
-            myBatches={myBatches}
-            onNavigate={setActivePage}
-            onOpenBatchDetails={openBatchDetails}
-            assignmentCount={assignmentCount}
-            pendingCount={pendingCount}
-          />
-        );
-      case "batches":
-        return <StudentBatchesView myBatches={myBatches} loading={loading} error={batchError} onRefresh={refreshOverviewData} onOpenBatchDetails={openBatchDetails} />;
-      case "batch-details":
-        return <BatchDetails batchId={selectedBatchId} onBack={() => setActivePage("batches")} isStudentView />;
-      case "profile":
-        return <StudentProfileView student={student} />;
-      case "assignments":
-        return <StudentAssignments />;
-      default:
-        return null;
-    }
-  };
-
   return (
     <div className="flex min-h-screen bg-[#0F1114]">
       <StudentSidebar
         activePage={activePage}
-        onNavigate={setActivePage}
+        onNavigate={navigateToPage}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
       />
@@ -348,7 +333,7 @@ const StudentDashboard = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">{renderContent()}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8"><Outlet /></main>
       </div>
     </div>
   );

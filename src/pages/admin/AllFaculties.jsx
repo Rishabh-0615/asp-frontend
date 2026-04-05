@@ -19,6 +19,7 @@ const AllFaculties = () => {
   const { getAllFaculties, loading } = useAdmin();
   const [faculties, setFaculties] = useState([]);
   const [error, setError] = useState(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const load = async () => {
     setError(null);
@@ -27,6 +28,8 @@ const AllFaculties = () => {
       setFaculties(data);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setIsInitialLoad(false);
     }
   };
 
@@ -62,7 +65,26 @@ const AllFaculties = () => {
         </div>
       )}
 
-      {faculties.length === 0 && !loading && !error ? (
+      {(loading || isInitialLoad) && faculties.length === 0 ? (
+        <>
+          <div className="hidden md:block bg-[#1C1F23] border border-gray-700 rounded-2xl overflow-hidden">
+            <div className="p-6 space-y-3">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} className="h-10 rounded-lg bg-[#2A2F36] animate-pulse" />
+              ))}
+            </div>
+          </div>
+          <div className="md:hidden space-y-3">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div key={idx} className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-4 animate-pulse">
+                <div className="h-4 w-2/3 rounded bg-[#2A2F36] mb-2" />
+                <div className="h-4 w-1/2 rounded bg-[#2A2F36] mb-2" />
+                <div className="h-8 w-24 rounded bg-[#2A2F36]" />
+              </div>
+            ))}
+          </div>
+        </>
+      ) : faculties.length === 0 && !loading && !isInitialLoad && !error ? (
         <div className="bg-[#1C1F23] border border-gray-700 rounded-2xl p-14 text-center">
           <p className="text-[#F3F4F6] font-medium">No faculty members found.</p>
         </div>

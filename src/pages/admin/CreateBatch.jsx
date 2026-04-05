@@ -13,7 +13,7 @@ const EMPTY_FORM = {
 };
 
 const CreateBatch = () => {
-  const { loading, getBatchOptions, createBatch } = useBatch();
+  const { loading, getBatchOptions, createBatch, uploadBatchLabManual } = useBatch();
 
   const [options, setOptions] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -52,20 +52,20 @@ const CreateBatch = () => {
   }, [form.division, options]);
 
   const semesterOptions = useMemo(() => {
-    if (String(form.year) !== "3" || !options?.thirdYearSubjectsBySemester) return [];
+    if (!options?.thirdYearSubjectsBySemester) return [];
     return Object.keys(options.thirdYearSubjectsBySemester)
       .map(Number)
       .sort((a, b) => a - b);
-  }, [form.year, options]);
+  }, [options]);
 
   const subjectOptions = useMemo(() => {
-    if (String(form.year) !== "3" || !form.semester || !options?.thirdYearSubjectsBySemester) return [];
+    if (!form.semester || !options?.thirdYearSubjectsBySemester) return [];
     return (
       options.thirdYearSubjectsBySemester[String(form.semester)] ||
       options.thirdYearSubjectsBySemester[Number(form.semester)] ||
       []
     );
-  }, [form.year, form.semester, options]);
+  }, [form.semester, options]);
 
   const onFieldChange = (name, value) => {
     setMessage(null);
@@ -124,9 +124,20 @@ const CreateBatch = () => {
 
       const res = await createBatch(payload);
       const mapped = res?.data?.mappedStudentCount ?? 0;
+      let messageText = `Batch created successfully. ${mapped} students were linked.`;
+
+      if (form.labManualFile) {
+        const createdBatchId = res?.data?.batchId;
+
+        if (createdBatchId) {
+          await uploadBatchLabManual(createdBatchId, form.labManualFile);
+          messageText += " Lab manual uploaded successfully.";
+        }
+      }
+
       setMessage({
         success: true,
-        text: `Batch created successfully. ${mapped} students were linked.`,
+        text: messageText,
       });
       setForm((prev) => ({
         ...EMPTY_FORM,
@@ -226,13 +237,13 @@ const CreateBatch = () => {
           <div>
             <label className={labelClass}>
               Semester
-              {String(form.year) !== "3" && <span className="text-gray-600 font-normal ml-1">(available for 3rd year)</span>}
+              {!form.year && <span className="text-gray-600 font-normal ml-1">(select year first)</span>}
             </label>
             <select
               value={form.semester}
               onChange={(e) => onFieldChange("semester", e.target.value)}
-              className={String(form.year) === "3" ? inputClass : disabledClass}
-              disabled={String(form.year) !== "3"}
+              className={form.year ? inputClass : disabledClass}
+              disabled={!form.year}
               required
             >
               <option value="">Select semester</option>
@@ -292,9 +303,8 @@ const CreateBatch = () => {
 
       {message && (
         <div
-          className={`mt-6 p-5 rounded-xl border flex items-start gap-3 ${
-            message.success ? "bg-[#00C2FF]/10 border-[#00C2FF]/30" : "bg-red-950/40 border-red-800"
-          }`}
+          className={`mt-6 p-5 rounded-xl border flex items-start gap-3 ${message.success ? "bg-[#00C2FF]/10 border-[#00C2FF]/30" : "bg-red-950/40 border-red-800"
+            }`}
         >
           {message.success ? (
             <CheckCircle size={18} className="text-[#00C2FF] mt-0.5" />
