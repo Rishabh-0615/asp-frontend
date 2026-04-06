@@ -13,9 +13,11 @@ import {
   Users,
   UserRound,
   X,
+  AlertTriangle,
 } from "lucide-react";
 import { useAssignment } from "../../context/AssignmentContext";
 import { Document, Page, pdfjs } from "react-pdf";
+import PlagiarismReportModal from "../../components/PlagiarismReportModal";
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
 
@@ -191,6 +193,7 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
   const [pdfFallbackActive, setPdfFallbackActive] = useState(false);
   const [detectingBySubmissionId, setDetectingBySubmissionId] = useState({});
   const [batchDetecting, setBatchDetecting] = useState(false);
+  const [showPlagiarismModal, setShowPlagiarismModal] = useState(false);
 
   const rows = assessment?.students || [];
 
@@ -551,6 +554,14 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
+        </button>
+
+        <button
+          onClick={() => setShowPlagiarismModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-all min-h-11"
+        >
+          <AlertTriangle size={14} />
+          Check Plagiarism
         </button>
       </div>
 
@@ -918,6 +929,12 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
           </div>
         </div>
       )}
+
+      <PlagiarismReportModal 
+        isOpen={showPlagiarismModal}
+        onClose={() => setShowPlagiarismModal(false)}
+        assignmentId={assignmentId}
+      />
     </div>
   );
 };
