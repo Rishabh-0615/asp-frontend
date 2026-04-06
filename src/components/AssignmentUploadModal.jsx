@@ -113,7 +113,7 @@ const AssignmentUploadModal = ({
     }
 
     if (selectedFile.size > MAX_FILE_SIZE) {
-      setError("File size exceeds 50MB limit");
+      setError("File size exceeds 2MB limit");
       setFile(null);
       return;
     }
@@ -192,7 +192,7 @@ const AssignmentUploadModal = ({
             <div className="rounded-xl border border-gray-700 bg-[#0F1114] p-3 text-xs text-gray-400">
               Allowed: {allowListText}
               <br />
-              Max size: 50MB
+              Max size: 2MB
             </div>
 
             {file && (

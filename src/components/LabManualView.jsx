@@ -16,24 +16,61 @@ const LabManualView = ({ assignmentId, batchId, role = 'student', refreshKey = 0
   const fetchLabManuals = async () => {
     try {
       setLoading(true);
-      let endpoint = '';
-      if (assignmentId) {
-        endpoint = `${BASE_URL}/api/submissions/assignment/${assignmentId}/lab-manuals`;
-      } else if (batchId) {
-        endpoint = `${BASE_URL}/api/submissions/batch/${batchId}/lab-manuals`;
-      } else {
+      if (!assignmentId && !batchId) {
         setLabManuals([]);
         setLoading(false);
         return;
       }
 
-      const response = await axios.get(endpoint);
-      setLabManuals(Array.isArray(response.data) ? response.data : [response.data]);
+      const requests = [];
+      if (assignmentId) {
+        requests.push(axios.get(`${BASE_URL}/api/submissions/assignment/${assignmentId}/lab-manuals`, {
+          withCredentials: true,
+        }));
+      }
+      if (batchId) {
+        requests.push(axios.get(`${BASE_URL}/api/submissions/batch/${batchId}/lab-manuals`, {
+          withCredentials: true,
+        }));
+      }
+
+      const responses = await Promise.all(requests);
+      const merged = new Map();
+
+      responses.forEach((response) => {
+        const data = response?.data;
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.data)
+            ? data.data
+            : data
+              ? [data]
+              : [];
+
+        list.forEach((manual) => {
+          if (manual?.id) {
+            merged.set(manual.id, manual);
+          }
+        });
+      });
+
+      const sorted = [...merged.values()].sort((a, b) => {
+        const aTime = a?.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+        const bTime = b?.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+
+      setLabManuals(sorted);
       setError('');
     } catch (err) {
-      // Lab manuals might not exist yet - this is OK
-      setLabManuals([]);
-      setError('');
+      const status = err?.response?.status;
+      if (status === 404) {
+        setLabManuals([]);
+        setError('');
+      } else {
+        setLabManuals([]);
+        setError(err?.response?.data?.message || 'Failed to fetch lab manuals.');
+      }
     } finally {
       setLoading(false);
     }
@@ -73,7 +110,7 @@ const LabManualView = ({ assignmentId, batchId, role = 'student', refreshKey = 0
   if (labManuals.length === 0) {
     return (
       <div className="p-6 bg-[#1C1F23] rounded-2xl border border-gray-700 text-center">
-        <p className="text-gray-500 text-sm">No lab manual uploaded for this assignment yet.</p>
+        <p className="text-gray-500 text-sm">{error || 'No lab manual uploaded yet.'}</p>
       </div>
     );
   }

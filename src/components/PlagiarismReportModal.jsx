@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
-const PlagiarismReportModal = ({ isOpen, onClose, assignmentId, report }) => {
+const PlagiarismReportModal = ({ isOpen, onClose, assignmentId, report, onAnalysisComplete }) => {
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [error, setError] = useState(null);
@@ -99,6 +99,9 @@ const PlagiarismReportModal = ({ isOpen, onClose, assignmentId, report }) => {
       if (reportData.success) {
         setReportData(reportData);
         console.log('📋 Report displayed with', reportData.totalMatches, 'matches');
+        if (typeof onAnalysisComplete === 'function') {
+          onAnalysisComplete(reportData);
+        }
       } else {
         setError(reportData.message || 'Failed to fetch plagiarism report');
       }

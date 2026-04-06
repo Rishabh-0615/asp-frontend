@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, Download, Eye, CheckCircle, Clock } from 'lucide-react';
 import { useAssignment } from '../../context/AssignmentContext';
+import StudentOriginalityReportModal from '../../components/StudentOriginalityReportModal';
 
 const MarksEvaluation = ({ assignmentId, onBack }) => {
   const [marks, setMarks] = useState([]);
@@ -10,27 +11,62 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
   const [editedMarks, setEditedMarks] = useState({});
   const [savingId, setSavingId] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [autoFillLoading, setAutoFillLoading] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [selectedReport, setSelectedReport] = useState(null);
+  const hasFinalized = marks.some((m) => m.status === 'FINALIZED');
 
-  const { getMarksForAssignment, finalizeMarks } = useAssignment();
+  const {
+    getMarksForAssignment,
+    finalizeMarks,
+    autoFillPlagiarismMarks,
+    getStudentOriginalityReport,
+  } = useAssignment();
+
+  const loadMarks = useCallback(async () => {
+    if (!assignmentId) return;
+    try {
+      setLoading(true);
+      const data = await getMarksForAssignment(assignmentId);
+      setMarks(Array.isArray(data) ? data : []);
+      setError('');
+    } catch (err) {
+      console.error('Error loading marks:', err);
+      setError(err.message || 'Failed to load marks');
+    } finally {
+      setLoading(false);
+    }
+  }, [assignmentId, getMarksForAssignment]);
 
   useEffect(() => {
-    const loadMarks = async () => {
-      if (!assignmentId) return;
-      try {
-        setLoading(true);
-        const data = await getMarksForAssignment(assignmentId);
-        setMarks(Array.isArray(data) ? data : []);
-        setError('');
-      } catch (err) {
-        console.error('Error loading marks:', err);
-        setError(err.message || 'Failed to load marks');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadMarks();
-  }, [assignmentId, getMarksForAssignment]);
+  }, [loadMarks]);
+
+  const handleAutoFillMarks = async () => {
+    if (!assignmentId) {
+      return;
+    }
+
+    try {
+      setAutoFillLoading(true);
+      const response = await autoFillPlagiarismMarks(assignmentId);
+
+      if (response?.ready) {
+        setSuccessMessage(response.message || 'Plagiarism marks were auto-filled successfully.');
+        setTimeout(() => setSuccessMessage(''), 3000);
+        await loadMarks();
+        return;
+      }
+
+      setError(response?.message || 'Run Check Plagiarism and Recalculate AI (All) first.');
+    } catch (err) {
+      setError(err.message || 'Failed to auto-fill plagiarism marks');
+    } finally {
+      setAutoFillLoading(false);
+    }
+  };
 
   const handleEditClick = (mark) => {
     setEditingId(mark.studentMarkId);
@@ -40,6 +76,26 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
       spoMarks: mark.spoMarks || '',
       feedback: mark.feedback || '',
     });
+  };
+
+  const handleViewReport = async (studentMarkId) => {
+    if (!studentMarkId) {
+      return;
+    }
+
+    setShowReportModal(true);
+    setReportLoading(true);
+    setReportError('');
+    setSelectedReport(null);
+
+    try {
+      const data = await getStudentOriginalityReport(studentMarkId);
+      setSelectedReport(data || null);
+    } catch (err) {
+      setReportError(err.message || 'Failed to load report');
+    } finally {
+      setReportLoading(false);
+    }
   };
 
   const handleSaveMarks = async (studentMarkId) => {
@@ -126,6 +182,9 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
   const totalStudents = marks.length;
   const finalizedCount = marks.filter((m) => m.status === 'FINALIZED').length;
   const pendingCount = totalStudents - finalizedCount;
+  const needsAutoFill = marks.some(
+    (mark) => mark.batchSimilarityMarks == null || mark.aiSimilarityMarks == null
+  );
 
   if (loading) {
     return (
@@ -141,15 +200,25 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
   return (
     <div className="min-h-screen bg-[#0F1114] p-6">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-[#2A2F36] rounded-lg transition-colors"
+            title="Go back"
+          >
+            <ChevronLeft className="h-6 w-6 text-[#00C2FF]" />
+          </button>
+          <h1 className="text-3xl font-bold text-[#F3F4F6]">Evaluate Marks</h1>
+        </div>
         <button
-          onClick={onBack}
-          className="p-2 hover:bg-[#2A2F36] rounded-lg transition-colors"
-          title="Go back"
+          type="button"
+          onClick={handleAutoFillMarks}
+          disabled={autoFillLoading || !marks.length || hasFinalized}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-sky-500/40 bg-sky-500/10 text-sky-200 text-sm hover:bg-sky-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <ChevronLeft className="h-6 w-6 text-[#00C2FF]" />
+          {autoFillLoading ? 'Calculating RPP Marks...' : 'Calculate RPP Marks'}
         </button>
-        <h1 className="text-3xl font-bold text-[#F3F4F6]">Evaluate Marks</h1>
       </div>
 
       {/* Error Message */}
@@ -163,6 +232,25 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
       {successMessage && (
         <div className="mb-6 bg-emerald-500/10 border border-emerald-500/40 rounded-xl p-4">
           <p className="text-emerald-300">{successMessage}</p>
+        </div>
+      )}
+
+      {needsAutoFill && (
+        <div className="mb-6 bg-sky-500/10 border border-sky-500/30 rounded-xl p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sky-200 font-semibold">Auto-fill the 3 plagiarism marks</p>
+            <p className="text-sky-100/80 text-sm">
+              Click Check Plagiarism and Recalculate AI (All) on the previous page, then use auto-fill here to populate the 1 + 2 split.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleAutoFillMarks}
+            disabled={autoFillLoading || hasFinalized}
+            className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-sky-400 text-slate-950 font-semibold hover:bg-sky-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {autoFillLoading ? 'Calculating RPP Marks...' : 'Calculate RPP Marks'}
+          </button>
         </div>
       )}
 
@@ -223,31 +311,49 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
                   <td className="px-6 py-4 text-gray-400">{formatDate(mark.submissionDate)}</td>
                   <td className="px-6 py-4 text-center text-[#F3F4F6]">
                     {editingId === mark.studentMarkId ? (
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="2"
-                          step="0.5"
-                          value={editedMarks.timelyMarks}
-                          onChange={(e) => setEditedMarks({ ...editedMarks, timelyMarks: e.target.value })}
-                          className="w-16 px-2 py-1 bg-[#0F1114] border border-gray-700 rounded text-[#F3F4F6] text-center"
-                        />
-                        <span className="text-gray-500">/</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="3"
-                          step="0.5"
-                          value={editedMarks.plagiarismMarks}
-                          onChange={(e) => setEditedMarks({ ...editedMarks, plagiarismMarks: e.target.value })}
-                          className="w-16 px-2 py-1 bg-[#0F1114] border border-gray-700 rounded text-[#F3F4F6] text-center"
-                        />
-                      </div>
-                    ) : (
                       <>
-                        {Number(mark.timelyMarks ?? 0).toFixed(1)}/{Number(mark.plagiarismMarks ?? 0).toFixed(1)} ({(Number(mark.timelyMarks || 0) + Number(mark.plagiarismMarks || 0)).toFixed(1)}/5)
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            max="2"
+                            step="0.5"
+                            value={editedMarks.timelyMarks}
+                            onChange={(e) => setEditedMarks({ ...editedMarks, timelyMarks: e.target.value })}
+                            className="w-16 px-2 py-1 bg-[#0F1114] border border-gray-700 rounded text-[#F3F4F6] text-center"
+                          />
+                          <span className="text-gray-500">/</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="3"
+                            step="0.5"
+                            value={editedMarks.plagiarismMarks}
+                            onChange={(e) => setEditedMarks({ ...editedMarks, plagiarismMarks: e.target.value })}
+                            className="w-16 px-2 py-1 bg-[#0F1114] border border-gray-700 rounded text-[#F3F4F6] text-center"
+                          />
+                        </div>
+                        <div className="mt-2 text-[11px] text-gray-500">
+                          {mark.batchSimilarityMarks != null && mark.aiSimilarityMarks != null ? (
+                            <span>
+                              Batch {Number(mark.batchSimilarityMarks).toFixed(0)}/1 · AI {Number(mark.aiSimilarityMarks).toFixed(0)}/2
+                            </span>
+                          ) : (
+                            <span>Auto-fill pending. Use the button above to calculate the 1 + 2 split.</span>
+                          )}
+                        </div>
                       </>
+                    ) : (
+                      <div>
+                        <div>
+                          {Number(mark.timelyMarks ?? 0).toFixed(1)}/{Number(mark.plagiarismMarks ?? 0).toFixed(1)} ({(Number(mark.timelyMarks || 0) + Number(mark.plagiarismMarks || 0)).toFixed(1)}/5)
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-1">
+                          {mark.batchSimilarityMarks != null && mark.aiSimilarityMarks != null
+                            ? `Batch ${Number(mark.batchSimilarityMarks).toFixed(0)}/1 · AI ${Number(mark.aiSimilarityMarks).toFixed(0)}/2`
+                            : 'Originality split not calculated yet.'}
+                        </div>
+                      </div>
                     )}
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -290,15 +396,25 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
                       >
                         {savingId === mark.studentMarkId ? 'Saving...' : 'Save'}
                       </button>
-                    ) : mark.status === 'FINALIZED' ? (
-                      <span className="text-gray-400 text-sm">Locked</span>
                     ) : (
-                      <button
-                        onClick={() => handleEditClick(mark)}
-                        className="text-[#00C2FF] hover:underline text-sm font-medium"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center justify-center gap-3">
+                        {mark.status === 'FINALIZED' ? (
+                          <span className="text-gray-400 text-sm">Locked</span>
+                        ) : (
+                          <button
+                            onClick={() => handleEditClick(mark)}
+                            className="text-[#00C2FF] hover:underline text-sm font-medium"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleViewReport(mark.studentMarkId)}
+                          className="text-amber-300 hover:underline text-sm font-medium"
+                        >
+                          View Report
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -393,7 +509,14 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
                       className="w-full px-2 py-1 bg-[#1C1F23] border border-gray-700 rounded text-[#F3F4F6] font-semibold"
                     />
                   ) : (
-                    <p className="text-[#00C2FF] font-semibold">{mark.spoMarks !== null && mark.spoMarks !== undefined ? Number(mark.spoMarks).toFixed(1) : '-'}/5</p>
+                    <div>
+                      <p className="text-[#00C2FF] font-semibold">{mark.spoMarks !== null && mark.spoMarks !== undefined ? Number(mark.spoMarks).toFixed(1) : '-'}/5</p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        {mark.batchSimilarityMarks != null && mark.aiSimilarityMarks != null
+                          ? `Batch ${Number(mark.batchSimilarityMarks).toFixed(0)}/1 · AI ${Number(mark.aiSimilarityMarks).toFixed(0)}/2`
+                          : 'Auto-fill pending.'}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -443,26 +566,49 @@ const MarksEvaluation = ({ assignmentId, onBack }) => {
                       Cancel
                     </button>
                   </>
-                ) : mark.status === 'FINALIZED' ? (
-                  <button
-                    disabled
-                    className="w-full bg-gray-700 text-gray-400 px-3 py-2 rounded font-semibold text-sm opacity-50 cursor-not-allowed"
-                  >
-                    Locked
-                  </button>
                 ) : (
-                  <button
-                    onClick={() => handleEditClick(mark)}
-                    className="w-full bg-[#00C2FF] text-[#0F1114] px-3 py-2 rounded font-semibold text-sm hover:bg-[#00B8E6] transition-colors"
-                  >
-                    Edit Marks
-                  </button>
+                  <>
+                    {mark.status === 'FINALIZED' ? (
+                      <button
+                        disabled
+                        className="flex-1 bg-gray-700 text-gray-400 px-3 py-2 rounded font-semibold text-sm opacity-50 cursor-not-allowed"
+                      >
+                        Locked
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleEditClick(mark)}
+                        className="flex-1 bg-[#00C2FF] text-[#0F1114] px-3 py-2 rounded font-semibold text-sm hover:bg-[#00B8E6] transition-colors"
+                      >
+                        Edit Marks
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleViewReport(mark.studentMarkId)}
+                      className="flex-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 px-3 py-2 rounded font-semibold text-sm hover:bg-amber-500/30 transition-colors"
+                    >
+                      View Report
+                    </button>
+                  </>
                 )}
               </div>
             </div>
           ))
         )}
       </div>
+
+      <StudentOriginalityReportModal
+        isOpen={showReportModal}
+        loading={reportLoading}
+        error={reportError}
+        report={selectedReport}
+        onClose={() => {
+          setShowReportModal(false);
+          setReportLoading(false);
+          setReportError('');
+          setSelectedReport(null);
+        }}
+      />
     </div>
   );
 };

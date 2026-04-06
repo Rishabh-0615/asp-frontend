@@ -331,6 +331,48 @@ export const AssignmentProvider = ({ children }) => {
     }
   }, []);
 
+  const autoFillPlagiarismMarks = useCallback(async (assignmentId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await requestWithRetry(
+        () =>
+          axios.post(`${BASE_URL}/api/marks/assignment/${assignmentId}/auto-fill-plagiarism`, {}, {
+            withCredentials: true,
+          }),
+        2
+      );
+      return res.data;
+    } catch (err) {
+      const msg = apiError(err, "Failed to auto-fill plagiarism marks.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const getStudentOriginalityReport = useCallback(async (studentMarkId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await requestWithRetry(
+        () =>
+          axios.get(`${BASE_URL}/api/marks/${studentMarkId}/report`, {
+            withCredentials: true,
+          }),
+        2
+      );
+      return res.data;
+    } catch (err) {
+      const msg = apiError(err, "Failed to fetch student report.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const getStudentBatchMarks = useCallback(async (batchId, _studentId) => {
     setLoading(true);
     setError(null);
@@ -366,6 +408,8 @@ export const AssignmentProvider = ({ children }) => {
       deleteSettingsAssignment,
       getMarksForAssignment,
       finalizeMarks,
+      autoFillPlagiarismMarks,
+      getStudentOriginalityReport,
       getStudentBatchMarks,
     }),
     [
@@ -381,6 +425,8 @@ export const AssignmentProvider = ({ children }) => {
       deleteSettingsAssignment,
       getMarksForAssignment,
       finalizeMarks,
+      autoFillPlagiarismMarks,
+      getStudentOriginalityReport,
       getStudentBatchMarks,
     ]
   );

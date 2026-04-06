@@ -4,6 +4,7 @@ import { FileUp, CheckCircle, AlertCircle } from "lucide-react";
 import axios from "axios";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const ALLOWED_EXTENSIONS = ["csv", "xls", "xlsx", "xlsm", "xltx", "xltm"];
 
 const StudentBulkUpload = () => {
   const { loading } = useAdmin();
@@ -13,11 +14,13 @@ const StudentBulkUpload = () => {
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
-    if (selectedFile && selectedFile.type === "text/csv") {
+    const extension = selectedFile?.name?.split(".")?.pop()?.toLowerCase();
+
+    if (selectedFile && ALLOWED_EXTENSIONS.includes(extension)) {
       setFile(selectedFile);
       setResult(null);
     } else {
-      alert("Please select a valid CSV file");
+      alert("Please select a valid CSV or Excel file (.csv, .xls, .xlsx, .xlsm, .xltx, .xltm)");
     }
   };
 
@@ -81,13 +84,13 @@ const StudentBulkUpload = () => {
           Bulk Upload Students
         </h2>
         <p className="text-sm text-gray-500">
-          Upload a CSV file to create multiple student accounts at once
+          Upload a CSV or Excel file to create multiple student accounts at once
         </p>
       </div>
 
       {/* CSV Format Info */}
       <div className="bg-[#00C2FF]/5 border border-[#00C2FF]/20 rounded-xl p-6 mb-6">
-        <h3 className="font-semibold text-[#F3F4F6] mb-3">CSV Format Requirements</h3>
+        <h3 className="font-semibold text-[#F3F4F6] mb-3">File Format Requirements</h3>
         <div className="bg-[#0F1114] rounded-lg p-4 font-mono text-xs overflow-x-auto">
           <div className="text-gray-400">
             rollNo,email,name,department,year,division,baseBatch,tempPassword
@@ -115,7 +118,7 @@ const StudentBulkUpload = () => {
           <label className="cursor-pointer">
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.xls,.xlsx,.xlsm,.xltx,.xltm"
               onChange={handleFileChange}
               className="hidden"
             />
@@ -124,9 +127,9 @@ const StudentBulkUpload = () => {
                 <span className="text-[#F3F4F6] font-medium">{file.name}</span>
               ) : (
                 <>
-                  Click to select CSV file or drag and drop
+                  Click to select CSV/Excel file or drag and drop
                   <br />
-                  <span className="text-xs">(CSV files only)</span>
+                  <span className="text-xs">(.csv, .xls, .xlsx, .xlsm, .xltx, .xltm)</span>
                 </>
               )}
             </span>

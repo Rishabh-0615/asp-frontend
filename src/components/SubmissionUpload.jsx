@@ -11,7 +11,7 @@ const SubmissionUpload = ({ assignmentId, contentType = 'STUDENT_SUBMISSION', on
   const [success, setSuccess] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+  const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
   const ALLOWED_TYPES = [
     'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
     'jpg', 'jpeg', 'png', 'txt', 'md',
@@ -32,7 +32,7 @@ const SubmissionUpload = ({ assignmentId, contentType = 'STUDENT_SUBMISSION', on
 
     // Validate file size
     if (selectedFile.size > MAX_FILE_SIZE) {
-      setError('File size exceeds 50MB limit');
+      setError('File size exceeds 2MB limit');
       setFile(null);
       return;
     }
@@ -189,7 +189,7 @@ const SubmissionUpload = ({ assignmentId, contentType = 'STUDENT_SUBMISSION', on
 
       {/* File Info */}
       <p className="text-xs text-gray-500 mt-4">
-        Allowed: Documents, images, code files (.cpp, .java, .c, .html, .css, .js, etc), and archives (Max 50MB)
+        Allowed: Documents, images, code files (.cpp, .java, .c, .html, .css, .js, etc), and archives (Max 2MB)
       </p>
     </div>
   );

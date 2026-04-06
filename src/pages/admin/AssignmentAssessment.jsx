@@ -174,7 +174,7 @@ const pdfDownloadEndpointFor = (submissionId, fileUrl, fileName) => {
 };
 
 const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatchId = null }) => {
-  const { loading, getAssignmentAssessment } = useAssignment();
+  const { loading, getAssignmentAssessment, autoFillPlagiarismMarks } = useAssignment();
 
   const [assessment, setAssessment] = useState(null);
   const [error, setError] = useState(null);
@@ -281,6 +281,7 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
         throw new Error(payload.message || "AI detection could not be completed.");
       }
 
+      await autoFillPlagiarismMarks(assignmentId).catch(() => {});
       await loadAssessment({ forceRefresh: true });
     } catch (err) {
       setError(err.message || "AI detection failed.");
@@ -312,6 +313,7 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
         setError("No submitted files were available to recalculate AI scores.");
       }
 
+      await autoFillPlagiarismMarks(assignmentId).catch(() => {});
       await loadAssessment({ forceRefresh: true });
     } catch (err) {
       setError(err.message || "Batch AI detection failed.");
@@ -934,6 +936,9 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
         isOpen={showPlagiarismModal}
         onClose={() => setShowPlagiarismModal(false)}
         assignmentId={assignmentId}
+        onAnalysisComplete={async () => {
+          await autoFillPlagiarismMarks(assignmentId).catch(() => {});
+        }}
       />
     </div>
   );
