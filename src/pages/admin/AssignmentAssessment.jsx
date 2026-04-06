@@ -134,7 +134,7 @@ const triggerBlobDownload = (blob, fileName) => {
 
 const toPercentText = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "-";
+    return "Pending";
   }
   return `${Number(value)}%`;
 };
@@ -189,6 +189,8 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
   const [pdfError, setPdfError] = useState(null);
   const [pdfPreviewSrc, setPdfPreviewSrc] = useState("");
   const [pdfFallbackActive, setPdfFallbackActive] = useState(false);
+  const [detectingBySubmissionId, setDetectingBySubmissionId] = useState({});
+  const [batchDetecting, setBatchDetecting] = useState(false);
 
   const rows = assessment?.students || [];
 
@@ -235,18 +237,83 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
     return result;
   }, [rows, submissionFilter, searchQuery]);
 
-  const loadAssessment = async () => {
+  const loadAssessment = async (options = {}) => {
     if (!assignmentId) {
       return;
     }
 
     setError(null);
     try {
-      const data = await getAssignmentAssessment(assignmentId);
+      const data = await getAssignmentAssessment(assignmentId, options);
       setAssessment(data);
     } catch (err) {
       setAssessment(null);
       setError(err.message);
+    }
+  };
+
+  const detectAiForSubmission = async (row) => {
+    const submissionId = row?.submissionId;
+    if (!submissionId) {
+      setError("Submission ID not found for this row.");
+      return;
+    }
+
+    setDetectingBySubmissionId((prev) => ({ ...prev, [submissionId]: true }));
+    setError(null);
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/submissions/${submissionId}/detect-ai`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || "AI detection failed.");
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      if (payload && payload.updated === false) {
+        throw new Error(payload.message || "AI detection could not be completed.");
+      }
+
+      await loadAssessment({ forceRefresh: true });
+    } catch (err) {
+      setError(err.message || "AI detection failed.");
+    } finally {
+      setDetectingBySubmissionId((prev) => ({ ...prev, [submissionId]: false }));
+    }
+  };
+
+  const detectMissingAiForAssignment = async () => {
+    if (!assignmentId) {
+      return;
+    }
+
+    setBatchDetecting(true);
+    setError(null);
+    try {
+      const response = await fetch(`${BASE_URL}/api/submissions/assignment/${assignmentId}/detect-missing-ai`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || "Batch AI detection failed.");
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      if (payload?.updated === 0) {
+        setError("No submitted files were available to recalculate AI scores.");
+      }
+
+      await loadAssessment({ forceRefresh: true });
+    } catch (err) {
+      setError(err.message || "Batch AI detection failed.");
+    } finally {
+      setBatchDetecting(false);
     }
   };
 
@@ -577,6 +644,16 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
             <div className="flex items-center justify-center px-4 py-2.5 rounded-lg border border-gray-700 bg-[#0F1114] text-sm text-gray-400">
               {filteredRows.length} of {rows.length}
             </div>
+
+            <button
+              type="button"
+              onClick={detectMissingAiForAssignment}
+              disabled={batchDetecting}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-violet-500/40 bg-violet-500/10 text-violet-300 text-sm hover:bg-violet-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw size={14} className={batchDetecting ? "animate-spin" : ""} />
+              {batchDetecting ? "Recalculating AI..." : "Recalculate AI (All)"}
+            </button>
           </div>
 
           {/* Table */}
@@ -637,6 +714,15 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
                                 >
                                   <Eye size={14} />
                                   Preview
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => detectAiForSubmission(row)}
+                                  disabled={!row.submissionId || detectingBySubmissionId[row.submissionId]}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-violet-500/40 bg-violet-500/10 text-violet-300 text-xs hover:bg-violet-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <RefreshCw size={14} className={detectingBySubmissionId[row.submissionId] ? "animate-spin" : ""} />
+                                  {detectingBySubmissionId[row.submissionId] ? "Detecting..." : "Detect AI"}
                                 </button>
                                 <button
                                   type="button"
@@ -709,6 +795,14 @@ const AssignmentAssessment = ({ assignmentId, onBack, onEvaluateMarks, backBatch
                             className="flex-1 min-h-10 px-3 py-2 rounded-lg border border-[#00C2FF]/40 bg-[#00C2FF]/10 text-[#9fdaed] text-xs"
                           >
                             View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => detectAiForSubmission(row)}
+                            disabled={!row.submissionId || detectingBySubmissionId[row.submissionId]}
+                            className="flex-1 min-h-10 px-3 py-2 rounded-lg border border-violet-500/40 bg-violet-500/10 text-violet-300 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {detectingBySubmissionId[row.submissionId] ? "Detecting..." : "Detect AI"}
                           </button>
                           <button
                             type="button"
